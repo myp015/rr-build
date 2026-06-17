@@ -312,7 +312,7 @@ jobs:
             [ -n "${{ env.tips }}" ] && echo "echo -e \"${{ env.tips }}\" >/mnt/p3/AddTips"
             [ -n "${{ env.kernel }}" ] && echo "writeConfigKey \"kernel\" \"${{ env.kernel }}\" \"\${USER_CONFIG_FILE}\""
             echo "menu.sh modelMenu \"${MODEL}\""
-            echo "menu.sh productversMenu \"${{ TARGET_DSM_VERSION }}\""
+            echo "menu.sh productversMenu \"${TARGET_DSM_VERSION}\""
             
             echo "menu.sh make"
             echo "menu.sh cleanCache"
