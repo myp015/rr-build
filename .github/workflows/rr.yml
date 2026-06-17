@@ -151,7 +151,7 @@ jobs:
       DSM_VERSION: 7.2.1-69057-1
       KERNEL: official
       ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,hdddb,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
-      HELPER_TOKEN: ${{ secrets.HELPER_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RR_ASSET_URL: ${{ needs.resolve-release.outputs.asset_url }}
       RR_TAG: ${{ needs.resolve-release.outputs.tag }}
     steps:
@@ -224,7 +224,7 @@ jobs:
           AINAS2IN1_DIR="${WORKDIR}/.2in1"
           rm -rf "$AINAS2IN1_DIR"
           mkdir -p "$AINAS2IN1_DIR"
-          git clone --depth 1 "https://x-access-token:${HELPER_TOKEN}@github.com/myp015/ainas2in1.git" "$AINAS2IN1_DIR"
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/myp015/ainas2in1.git" "$AINAS2IN1_DIR"
 
           grub_mnt="/mnt/p1"
           sudo mkdir -p /mnt/p1 /mnt/p2 /mnt/p3
@@ -437,14 +437,14 @@ jobs:
       - name: Publish zip to ainas2in1 release
         shell: bash
         env:
-          HELPER_TOKEN: ${{ secrets.HELPER_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           : "${TAG:?missing TAG}"
           : "${ARTIFACT_ZIP:?missing ARTIFACT_ZIP}"
-          : "${HELPER_TOKEN:?missing HELPER_TOKEN}"
+          : "${GITHUB_TOKEN:?missing GITHUB_TOKEN}"
 
-          export GH_TOKEN="$HELPER_TOKEN"
+          export GH_TOKEN="$GITHUB_TOKEN"
           export GH_REPO="myp015/ainas2in1"
           release_tag="rr-${TAG}"
 
