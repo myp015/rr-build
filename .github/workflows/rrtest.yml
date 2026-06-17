@@ -1,0 +1,437 @@
+#
+# Copyright (C) 2022 Ing <https://github.com/wjz304>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+
+name: RR-test Build
+on:
+  workflow_dispatch:
+    inputs:
+      model_ds918p:
+        description: "DS918+"
+        type: boolean
+        default: true
+      model_ds920p:
+        description: "DS920+"
+        type: boolean
+        default: true
+      model_ds923p:
+        description: "DS923+"
+        type: boolean
+        default: true
+      model_ds925p:
+        description: "DS925+"
+        type: boolean
+        default: true
+      model_ds3622xsp:
+        description: "DS3622xs+"
+        type: boolean
+        default: true
+      model_sa6400:
+        description: "SA6400"
+        type: boolean
+        default: true
+      model_ds425p:
+        description: "DS425+"
+        type: boolean
+        default: true
+      model_dva3221:
+        description: "DVA3221"
+        type: boolean
+        default: false
+      model_dva1622:
+        description: "DVA1622"
+        type: boolean
+        default: false
+      image_size:
+        description: "Image size"
+        type: choice
+        options:
+          - 2GB
+          - 2.5GB
+          - 4GB
+        default: 2.5GB
+      rr_version:
+        description: "RR version (可选，留空=latest；示例：26.4.0 或 v26.4.0)"
+        type: string
+        default: ""
+
+jobs:
+  resolve-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      asset_url: ${{ steps.pick.outputs.asset_url }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          req_raw="${{ inputs.rr_version }}"
+          req_tag="$(printf '%s' "$req_raw" | tr -d '[:space:]')"
+          req_tag="${req_tag#rr-}"
+          req_tag="${req_tag%.img.zip}"
+          req_tag="${req_tag#v}"
+
+          fetch_latest() {
+            curl -fsSL --connect-timeout 10 "https://api.github.com/repos/RROrg/rr/releases/latest"
+          }
+          fetch_tag() {
+            local t="$1"
+            curl -fsSL --connect-timeout 10 "https://api.github.com/repos/RROrg/rr/releases/tags/${t}"
+          }
+
+          if [ -z "$req_tag" ] || [ "$req_tag" = "latest" ]; then
+            echo "[INFO] rr_version 未填写，自动使用 latest"
+            json="$(fetch_latest)"
+          else
+            if ! json="$(fetch_tag "$req_tag" 2>/dev/null)"; then
+              echo "[WARN] rr_version=${req_raw} 未找到对应 tag，自动回退到 latest"
+              json="$(fetch_latest)"
+            fi
+          fi
+
+          tag="$(printf '%s' "$json" | jq -r '.tag_name' | sed 's/^v//')"
+          asset_url="$(printf '%s' "$json" | jq -r '.assets[]? | select(.name | test("^rr-.*\\.img\\.zip$")) | .browser_download_url' | head -n1)"
+          if [ -z "$tag" ] || [ "$tag" = "null" ] || [ -z "$asset_url" ] || [ "$asset_url" = "null" ]; then
+            echo "下载失败：无法解析 RR 发布信息 (rr_version=${req_raw:-latest})"
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "asset_url=$asset_url" >> "$GITHUB_OUTPUT"
+
+  select-models:
+    runs-on: ubuntu-latest
+    outputs:
+      models: ${{ steps.pick.outputs.models }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          models=()
+          [ "${{ inputs.model_ds918p }}" = "true" ] && models+=("DS918+")
+          [ "${{ inputs.model_ds920p }}" = "true" ] && models+=("DS920+")
+          [ "${{ inputs.model_ds923p }}" = "true" ] && models+=("DS923+")
+          [ "${{ inputs.model_ds925p }}" = "true" ] && models+=("DS925+")
+          [ "${{ inputs.model_ds3622xsp }}" = "true" ] && models+=("DS3622xs+")
+          [ "${{ inputs.model_sa6400 }}" = "true" ] && models+=("SA6400")
+          [ "${{ inputs.model_ds425p }}" = "true" ] && models+=("DS425+")
+          [ "${{ inputs.model_dva3221 }}" = "true" ] && models+=("DVA3221")
+          [ "${{ inputs.model_dva1622 }}" = "true" ] && models+=("DVA1622")
+
+          if [ ${#models[@]} -eq 0 ]; then
+            echo "请至少勾选一个型号"
+            exit 1
+          fi
+          echo "[INFO] 已选择型号: ${models[*]}"
+
+          json="["
+          for m in "${models[@]}"; do
+            json+="\"$m\"," 
+          done
+          json="${json%,}]"
+          echo "models=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [resolve-release, select-models]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        model: ${{ fromJson(needs.select-models.outputs.models) }}
+    env:
+      FORMAT: img
+      SIZE: ${{ inputs.image_size }}
+      LANGUAGE: zh_CN
+      DSM_VERSION: 7.2.1-69057-1
+      KERNEL: official
+      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,hdddb,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
+      ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
+      RR_ASSET_URL: ${{ needs.resolve-release.outputs.asset_url }}
+      RR_TAG: ${{ needs.resolve-release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Init Env
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          sudo timedatectl set-timezone "Asia/Shanghai"
+
+      - name: Fetch RR Release Asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${RR_TAG:?missing RR_TAG}"
+          : "${RR_ASSET_URL:?missing RR_ASSET_URL}"
+          filename="rr-${RR_TAG}.img.zip"
+          curl -fsSL --connect-timeout 10 "$RR_ASSET_URL" -o "$filename"
+          echo "TAG=$RR_TAG" >> "$GITHUB_ENV"
+          echo "FILENAME=$filename" >> "$GITHUB_ENV"
+
+      - name: Build Image
+        shell: bash
+        env:
+          MODEL: ${{ matrix.model }}
+        run: |
+          set -euo pipefail
+          pick_target_dsm_version() {
+            local model="$1"
+            case "$model" in
+              DS925+|DS425+)
+                printf '7.2.2-72806-0'
+                ;;
+              DVA3221|DVA1622)
+                printf '7.2.1-69057-1'
+                ;;
+              *)
+                printf '%s' "${DSM_VERSION}"
+                ;;
+            esac
+          }
+          TARGET_DSM_VERSION="$(pick_target_dsm_version "${MODEL}")"
+          artifact_version="$(case "${TARGET_DSM_VERSION}" in
+            7.2.2-72806-0) printf '722_72806' ;;
+            7.2.1-69057-1) printf '721_69057' ;;
+            7.2.1-69057-1|7.2.1-69057-0) printf '721_69057' ;;
+            *)
+              ver_main="${TARGET_DSM_VERSION%%-*}"
+              ver_major_minor="${ver_main#7.}"
+              ver_build="${TARGET_DSM_VERSION#*-}"
+              ver_build="${ver_build%%-*}"
+              printf '%s_%s' "${ver_major_minor//./}" "${ver_build}"
+              ;;
+          esac)"
+          artifact="${MODEL}_${artifact_version}_rr"
+          echo "[DEBUG] model=${MODEL} target_dsm_version=${TARGET_DSM_VERSION} artifact_version=${artifact_version}"
+          if echo "${MODEL}" | grep -Eq '^(DS925\+|DS425\+)$'; then
+            [ "${artifact_version}" = "722_72806" ] || { echo "[E] artifact_version mismatch for ${MODEL}: ${artifact_version}"; exit 1; }
+          else
+            [ "${artifact_version}" = "721_69057" ] || { echo "[E] artifact_version mismatch for ${MODEL}: ${artifact_version}"; exit 1; }
+          fi
+
+          sudo apt-get update
+          sudo apt-get install -y gettext cpio zstd dosfstools rsync qemu-utils
+          unzip "$FILENAME" -d rr rr.img
+          cp -f rr/rr.img rr/rr.base.img
+
+          WORKDIR="$PWD"
+          AINAS2IN1_DIR="${WORKDIR}/.2in1"
+          rm -rf "$AINAS2IN1_DIR"
+          mkdir -p "$AINAS2IN1_DIR"
+          git clone --depth 1 "https://x-access-token:${ACTION_TOKEN}@github.com/myp015/ainas2in1.git" "$AINAS2IN1_DIR"
+
+          grub_mnt="/mnt/p1"
+          sudo mkdir -p /mnt/p1 /mnt/p2 /mnt/p3
+          grub_loop=$(sudo losetup -f)
+          sudo losetup -P "$grub_loop" rr/rr.img
+
+          sudo mount -o rw "${grub_loop}p1" "$grub_mnt"
+          echo "[DEBUG] grub.cfg patch starts"
+          sudo env MODEL_ENV="$MODEL" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$grub_mnt/boot/grub/grub.cfg"
+          echo "[DEBUG] grub.cfg patch succeeded"
+          sudo umount "$grub_mnt" || true
+          sudo losetup --detach "$grub_loop" || true
+
+          loopx=$(sudo losetup -f)
+          sudo losetup -P "$loopx" rr/rr.img
+
+          sudo rm -rf /mnt/p3
+          sudo mkdir -p /mnt/p3
+          sudo mount "${loopx}p3" /mnt/p3
+
+          echo "[DEBUG] cpuinfo patch starts"
+          CPUINFO_TGZ="/mnt/p3/addons/cpuinfo/all.tgz"
+          CPUINFO_WORK="/tmp/cpuinfo_patch"
+          if [ -f "$CPUINFO_TGZ" ]; then
+            rm -rf "$CPUINFO_WORK"
+            mkdir -p "$CPUINFO_WORK/extract" "$CPUINFO_WORK/rootfs"
+
+            sudo tar -zxf "$CPUINFO_TGZ" -C "$CPUINFO_WORK/extract"
+
+            PATCH_TARGET=""
+            REPACK_MODE=""
+
+            if [ -f "$CPUINFO_WORK/extract/all.tar" ]; then
+              REPACK_MODE="inner-tar"
+              sudo tar -xf "$CPUINFO_WORK/extract/all.tar" -C "$CPUINFO_WORK/rootfs"
+              if [ -f "$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh" ]; then
+                PATCH_TARGET="$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh"
+              fi
+            elif [ -f "$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh" ]; then
+              REPACK_MODE="direct"
+              PATCH_TARGET="$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh"
+            fi
+
+            if [ -n "$PATCH_TARGET" ]; then
+              python3 "$AINAS2IN1_DIR/script/patch-cpuinfo.py" "$PATCH_TARGET"
+              if [ "$REPACK_MODE" = "inner-tar" ]; then
+                (cd "$CPUINFO_WORK/rootfs" && sudo tar -cf "$CPUINFO_WORK/extract/all.tar" .)
+                (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
+              else
+                (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
+              fi
+              echo "[DEBUG] cpuinfo all.tgz repacked successfully (mode=$REPACK_MODE)"
+            else
+              echo "[WARN] cpuinfo patch skipped: cpuinfo.sh not found in known all.tgz layouts"
+            fi
+          else
+            echo "[WARN] cpuinfo patch skipped: $CPUINFO_TGZ not found"
+          fi
+
+          sudo mkdir -p /tmp/initrd_work
+
+          cd /tmp/initrd_work
+
+
+          sudo zstd -dc /mnt/p3/initrd-rr | sudo cpio -idm
+
+          sudo bash "$AINAS2IN1_DIR/script/replace_ainas_po_notice.sh"
+
+          sudo AINAS2IN1_DIR="$AINAS2IN1_DIR" bash -c 'set -euo pipefail; . "${AINAS2IN1_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
+
+
+          echo "[INFO] 正在重新打包initrd-rr"
+          sudo rm -f /mnt/p3/initrd-rr
+          sudo find . | sudo cpio -o -H newc -R root:root | sudo zstd -19 -T0 -f -c - | sudo tee /mnt/p3/initrd-rr >/dev/null
+
+          cd "$WORKDIR"
+
+          sudo umount /mnt/p3 || true
+          sudo rm -rf /mnt/p3
+
+          echo "Building..."
+          {
+            echo ". menu.sh"
+            [ -n "${{ env.language }}" ] && echo "echo \"${{ env.language }}.UTF-8\" >/mnt/p1/.locale"
+            [ -n "${{ env.tips }}" ] && echo "echo -e \"${{ env.tips }}\" >/mnt/p3/AddTips"
+            [ -n "${{ env.kernel }}" ] && echo "writeConfigKey \"kernel\" \"${{ env.kernel }}\" \"\${USER_CONFIG_FILE}\""
+            echo "menu.sh modelMenu \"${{ MODEL }}\""
+            echo "menu.sh productversMenu \"${{ TARGET_DSM_VERSION }}\""
+            
+            echo "menu.sh make"
+            echo "menu.sh cleanCache"
+            [ -n "${{ env.sn }}" ] && echo "writeConfigKey \"sn\" \"${{ env.sn }}\" \"\${USER_CONFIG_FILE}\""
+            [ -n "${{ env.macs }}" ] && {
+              MACS=($(echo "${{ env.macs }}" | sed 's/[:-]//g' | sed 's/.*/\U&/' | sed 's/[;,]/ /g'))
+              [ -n "${MACS[0]}" ] && echo "writeConfigKey \"mac1\" \"${MACS[0]}\" \"\${USER_CONFIG_FILE}\""
+              [ -n "${MACS[1]}" ] && echo "writeConfigKey \"mac2\" \"${MACS[1]}\" \"\${USER_CONFIG_FILE}\""
+            }
+            [ "true" = "${{ env.template }}" ] && {
+              echo "writeConfigKey \"sn\" \"\" \"\${USER_CONFIG_FILE}\""
+              echo "writeConfigKey \"mac1\" \"\" \"\${USER_CONFIG_FILE}\""
+              echo "writeConfigKey \"mac2\" \"\" \"\${USER_CONFIG_FILE}\""
+            }
+          } > build.sh
+
+          chmod +x build.sh
+          RR_IMAGE_TAG="$TAG"
+          if [ "$TAG" != "25.9.7" ] && [ "$(printf '%s\n' "$TAG" "25.9.7" | sort -V | head -n1)" = "$TAG" ]; then
+            RR_IMAGE_TAG="25.9.7"
+          fi
+          echo "[DEBUG] rr docker image tag=${RR_IMAGE_TAG}"
+          docker pull "wjz304/rr:${RR_IMAGE_TAG}"
+          docker run --rm --privileged \
+            -v "$PWD/build.sh:/opt/rr/build.sh" \
+            -v "$PWD:$PWD" -w "$PWD" \
+            "wjz304/rr:${RR_IMAGE_TAG}" bash /opt/rr/build.sh
+
+          sudo mkdir -p /mnt/p3
+          sudo mount "${loopx}p3" /mnt/p3 || true
+
+          sudo rm -rf /mnt/p3/dl /mnt/p3/auxfiles /mnt/p3/logs || true
+          sudo umount /mnt/p3 || true
+
+          sudo losetup --detach "$loopx"
+          . "$AINAS2IN1_DIR/script/2in1func.sh"
+
+          usercfg="user-config.yml"
+          user_loop=$(sudo losetup -f)
+          sudo losetup -P "$user_loop" rr/rr.img
+          sudo mkdir -p /mnt/p1
+          sudo mount "${user_loop}p1" /mnt/p1
+          cp -f /mnt/p1/user-config.yml "$usercfg" 2>/dev/null || true
+          sudo umount /mnt/p1 || true
+          sudo losetup --detach "$user_loop" || true
+          if [ "$(printf '%s\n' "${TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
+            GRUB_IMG="ainas/grub2.14.img.gz"
+          else
+            GRUB_IMG="ainas/grub2.12.img.gz"
+          fi
+          echo "[DEBUG] selected grub image: ${GRUB_IMG} for rr tag=${TAG}"
+
+          case "$SIZE" in
+            2GB)
+              gzip -dc "$GRUB_IMG" > rr/rr_2GB.img
+              repack_rr_Img rr/rr.img rr/rr_2GB.img
+              rm -f rr/rr.img
+              mv -f rr/rr_2GB.img rr/rr.img
+              ;;
+            2.5GB)
+              gzip -dc "$GRUB_IMG" > rr/rr_2GB.img
+              repack_rr_Img rr/rr.img rr/rr_2GB.img
+              resizeImg rr/rr_2GB.img +512M
+              rm -f rr/rr.img
+              mv -f rr/rr_2GB.img rr/rr.img
+              ;;
+            4GB)
+              echo "keep default 4GB image"
+              ;;
+            *)
+              echo "unsupported size"
+              exit 1
+              ;;
+          esac
+          echo "[DEBUG] final image size bytes: $(stat -c%s rr/rr.img)"
+
+          case "$FORMAT" in
+            img)
+              mv -f rr/rr.img "${artifact}.img"
+              [ "$usercfg" = "user-config.yml" ] || mv -f "$usercfg" "user-config.yml"
+              ;;
+            *)
+              echo "unsupported format"
+              exit 1
+              ;;
+          esac
+
+          rm -f rr/rr.img rr/rr.base.img
+
+          zip_name="${artifact}.zip"
+          zip -qr "$zip_name" "${artifact}.img" user-config.yml
+          if [ -d "ainas" ]; then
+            find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$zip_name" {} +
+          fi
+
+          echo "ARTIFACT=${artifact}" >> "$GITHUB_ENV"
+          echo "ARTIFACT_ZIP=$zip_name" >> "$GITHUB_ENV"
+
+      - name: Publish zip to ainas2in1 release
+        shell: bash
+        env:
+          ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${TAG:?missing TAG}"
+          : "${ARTIFACT_ZIP:?missing ARTIFACT_ZIP}"
+          : "${ACTION_TOKEN:?missing ACTION_TOKEN}"
+
+          export GH_TOKEN="$ACTION_TOKEN"
+          export GH_REPO="myp015/ainas2in1"
+          release_tag="rr-${TAG}"
+
+          if ! gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release create "$release_tag" \
+              "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" \
+              --title "$release_tag" \
+              --notes "RR build artifacts for ${TAG}" \
+              --latest=false
+            exit 0
+          fi
+
+          gh release upload "$release_tag" "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" --clobber
