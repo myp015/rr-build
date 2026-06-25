@@ -681,13 +681,51 @@ jobs:
             exit 1
           fi
 
-          if ! gh release view "$release_tag" >/dev/null 2>&1; then
-            gh release create "$release_tag" \
-              "${assets[@]}" \
+          ensure_release() {
+            if gh release view "$release_tag" >/dev/null 2>&1; then
+              return 0
+            fi
+            echo "[INFO] release $release_tag not found, creating..."
+            set +e
+            create_out=$(gh release create "$release_tag" \
               --title "$release_tag" \
               --notes "RR build artifacts for ${TAG}" \
-              --latest=false
-            exit 0
-          fi
+              --latest=false 2>&1)
+            create_rc=$?
+            set -e
+            if [ "$create_rc" -eq 0 ]; then
+              return 0
+            fi
+            echo "$create_out"
+            if echo "$create_out" | grep -qiE 'already exists|already_exists|Validation Failed'; then
+              echo "[WARN] release was created by another matrix job, continue"
+              gh release view "$release_tag" >/dev/null
+              return 0
+            fi
+            return "$create_rc"
+          }
 
-          gh release upload "$release_tag" "${assets[@]}" --clobber
+          upload_assets() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              ensure_release
+              echo "[INFO] upload assets attempt ${attempt}: ${assets[*]}"
+              set +e
+              upload_out=$(gh release upload "$release_tag" "${assets[@]}" --clobber 2>&1)
+              upload_rc=$?
+              set -e
+              if [ "$upload_rc" -eq 0 ]; then
+                return 0
+              fi
+              echo "$upload_out"
+              if echo "$upload_out" | grep -qiE 'HTTP 404|HTTP 502|HTTP 503|HTTP 504|rate limit|secondary rate'; then
+                echo "[WARN] transient upload failure, retry after ${attempt}0s"
+                sleep "${attempt}0"
+                continue
+              fi
+              return "$upload_rc"
+            done
+            return 1
+          }
+
+          upload_assets
