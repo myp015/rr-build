@@ -673,8 +673,12 @@ jobs:
               sleep 10
             done
 
+            # 杀掉后台日志: 先杀 pipeline pid, 再兜底按名字杀残留的 docker logs -f
             kill "$LOG_PID" >/dev/null 2>&1 || true
-            wait "$LOG_PID" >/dev/null 2>&1 || true
+            pkill -f "docker logs -f dsm" >/dev/null 2>&1 || true
+            # 不要无条件 wait, 最多等 5 秒, 超时不阻塞
+            timeout 5 wait "$LOG_PID" 2>/dev/null || true
+            echo "[INFO] 后台日志进程已清理"
 
             if [ "$REBOOT_OK" != "1" ]; then
               echo "[E] 5分钟内工作流主机 curl http://127.0.0.1:5000 无输出，判定启动失败"
