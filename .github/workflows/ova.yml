@@ -455,20 +455,41 @@ jobs:
           fi
           docker compose -f docker-compose.yaml down || true
           docker rm -f dsm >/dev/null 2>&1 || true
-          docker compose -f docker-compose.yaml up -d
-          echo "[INFO] dsm 容器已启动，实时输出启动日志（前60秒）"
-          docker ps --filter "name=^dsm$" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-          timeout 60 docker logs -f dsm 2>&1 || true
-          
-          # ===== 新增: 探测 5000 是否就绪, 不就绪则 docker compose restart 重试(最多 3 次) =====
-          # 应对 loader 因磁盘识别/nested-KVM 时序竞态没能引导进 DSM、5000 端口从不就绪的随机卡死
-          BOOT_READY_TIMEOUT="${BOOT_READY_TIMEOUT:-180}"   # 每次尝试等待 5000 就绪的秒数
-          MAX_RESTART="${MAX_RESTART:-3}"                    # 最多重启重试次数
+            # ========== 0. /dev/kvm 检测与放权 (排除软件模拟导致的启动过慢/卡死) ==========
+          if [ -e /dev/kvm ]; then
+            echo "[INFO] /dev/kvm 存在, 放开权限确保 qemu 容器可用硬件加速"
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+            sudo udevadm control --reload-rules || true
+            sudo udevadm trigger --name-match=kvm || true
+            sudo chmod 0666 /dev/kvm || true
+            ls -l /dev/kvm || true
+          else
+            echo "[WARN] /dev/kvm 不存在, QEMU 将走软件模拟(极慢, 易卡死/超时)"
+          fi
+
+          # ========== 1. 启动函数: 每次都 down -v + up, 强制设备重新枚举 ==========
+          start_dsm_container() {
+            echo "[INFO] (重新)启动 dsm 容器: down -v + up"
+            docker compose -f docker-compose.yaml down -v || true
+            docker rm -f dsm >/dev/null 2>&1 || true
+            docker compose -f docker-compose.yaml up -d
+            echo "[INFO] dsm 容器已启动, 输出前 60s 启动日志"
+            docker ps --filter "name=^dsm$" --format "table {{.Names}}	{{.Status}}	{{.Ports}}"
+            timeout 60 docker logs -f dsm 2>&1 || true
+          }
+
+          # ========== 2. 探活: 端口通 + webman 有响应才算就绪 ==========
+          BOOT_READY_TIMEOUT="${BOOT_READY_TIMEOUT:-180}"
+          MAX_RESTART="${MAX_RESTART:-3}"
           wait_port_ready() {
             local deadline=$(( $(date +%s) + BOOT_READY_TIMEOUT ))
             while (( $(date +%s) < deadline )); do
+              # 容器若已退出, 立即失败, 不再空等
+              if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q . ; then
+                echo "[WARN] dsm 容器已退出"
+                return 1
+              fi
               if timeout 3 bash -lc '</dev/tcp/127.0.0.1/5000' 2>/dev/null; then
-                # 端口通了, 再确认 webman 状态接口有响应, 避免"端口通但服务没起"
                 if curl -s --max-time 5 "http://127.0.0.1:5000/webman/get_state.cgi" | grep -qiE '"success"|Synology|DiskStation|<html'; then
                   return 0
                 fi
@@ -478,27 +499,23 @@ jobs:
             return 1
           }
 
+          # ========== 3. 重试循环: 首次 up + 失败则 down/up 重来 (最多 MAX_RESTART 次) ==========
           BOOT_OK=0
           for attempt in $(seq 0 "$MAX_RESTART"); do
-            if [ "$attempt" -gt 0 ]; then
-              echo "[WARN] 5000 未就绪(疑似 loader 未引导进 DSM), 第 ${attempt}/${MAX_RESTART} 次重启容器重试..."
-              docker compose -f docker-compose.yaml restart || docker compose -f docker-compose.yaml up -d
-              timeout 60 docker logs -f dsm 2>&1 || true
-            fi
+            start_dsm_container
             if wait_port_ready; then
-              echo "[INFO] 5000 已就绪(attempt=${attempt}), 继续安装流程"
+              echo "[INFO] 5000 已就绪 (attempt=${attempt}), 继续安装流程"
               BOOT_OK=1
               break
             fi
-            echo "[DEBUG] attempt=${attempt} 等待 ${BOOT_READY_TIMEOUT}s 后 5000 仍未就绪"
+            echo "[DEBUG] attempt=${attempt} 等待 ${BOOT_READY_TIMEOUT}s 后 5000 仍未就绪 (loader 可能未引导进 DSM)"
           done
 
           if [ "$BOOT_OK" != "1" ]; then
-            echo "[E] 重启重试 ${MAX_RESTART} 次后, DSM 5000 端口仍未就绪(loader 引导失败), 退出"
+            echo "[E] 重试 ${MAX_RESTART} 次后 DSM 5000 端口仍未就绪(loader 引导失败), 退出"
             docker logs --tail 200 dsm 2>&1 || true
             exit 7
-          fi
-            # ===== 新增结束 =====          
+          fi      
 
           HOST_PORT=5000
           echo "[INFO] 执行自动安装监控程序"
