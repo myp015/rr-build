@@ -602,24 +602,24 @@ jobs:
 
             sleep 60
             REBOOT_OK=0
-for i in $(seq 1 60); do
-  OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
-  if [ -n "$OUT" ]; then
-    echo "[DEBUG] 判定启动成功(try=$i)"
-    echo "[INFO] 启动成功,额外稳定等待 300 秒..."
-    WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
-    while (( elapsed < WAIT_TOTAL )); do
-      dots+="."
-      printf "\r正在安装系统套件%s (%ds/%ds)" "$dots" "$elapsed" "$WAIT_TOTAL"
-      sleep "$WAIT_STEP"
-      elapsed=$(( elapsed + WAIT_STEP ))
-    done
-    printf "\r正在安装系统套件%s 完成\n" "$dots"
-    REBOOT_OK=1
-    break
-  fi
-  sleep 10
-done
+            for i in $(seq 1 60); do
+              OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
+              if [ -n "$OUT" ]; then
+                echo "[DEBUG] 判定启动成功(try=$i)"
+                echo "[INFO] 启动成功,额外稳定等待 300 秒..."
+                WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
+                while (( elapsed < WAIT_TOTAL )); do
+                  dots+="."
+                  printf "\r正在安装系统套件%s (%ds/%ds)" "$dots" "$elapsed" "$WAIT_TOTAL"
+                  sleep "$WAIT_STEP"
+                  elapsed=$(( elapsed + WAIT_STEP ))
+                done
+                printf "\r正在安装系统套件%s 完成\n" "$dots"
+                REBOOT_OK=1
+                break
+              fi
+              sleep 10
+            done
 
             kill "$LOG_PID" >/dev/null 2>&1 || true
             wait "$LOG_PID" >/dev/null 2>&1 || true
