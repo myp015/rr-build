@@ -168,7 +168,7 @@ jobs:
       LANGUAGE: zh_CN
       DSM_VERSION: ${{ inputs.dsm_version }}
       KERNEL: official
-      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,hdddb,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools,resizepart
+      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools,resizepart
       ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
       RR_ASSET_URL: ${{ needs.resolve-release.outputs.asset_url }}
       RR_TAG: ${{ needs.resolve-release.outputs.tag }}
@@ -392,12 +392,9 @@ jobs:
           sudo zstd -dc /mnt/p3/initrd-rr | sudo cpio -idm
 
           if [ "$(printf '%s\n' "$TAG" "25.9.7" | sort -V | head -n1)" = "$TAG" ] && [ "$TAG" != "25.9.7" ]; then
-            echo "[DEBUG] rr tag=${TAG} < 25.9.7, use 2in1_ram_patch-25_3_3.sh"
             sudo bash "$AINAS2IN1_DIR/script/2in1_ram_patch-25_3_3.sh"
-            echo "[DEBUG] replace initrd root .bashrc for rr<25.9.7"
             sudo cp -f "$AINAS2IN1_DIR/script/.bashrc" "/tmp/initrd_work/root/.bashrc"
           else
-            echo "[DEBUG] rr tag=${TAG} >= 25.9.7, use 2in1_ram_patch-26_3_3.sh"
             sudo bash "$AINAS2IN1_DIR/script/2in1_ram_patch-26_3_3.sh"
           fi
 
@@ -448,9 +445,7 @@ jobs:
             VAL=""
             writeConfigKey "addons.\"\${KEY}\"" "\${VAL}" "\${USER_CONFIG_FILE}"
           fi
-          echo "[DEBUG] model=${MODEL} force_nvmecache=\${FORCE_NVME_CACHE}"
 
-          echo "[DEBUG] addons after custom write:" 
           readConfigMap "addons" "\${USER_CONFIG_FILE}" || true
 
           set +e
@@ -605,8 +600,7 @@ jobs:
             for i in $(seq 1 60); do
               OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
               if [ -n "$OUT" ]; then
-                echo "[DEBUG] 判定启动成功(try=$i)"
-                echo "[INFO] 启动成功,额外稳定等待 300 秒..."
+                echo "[INFO] 启动成功,等待安装套件..."
                 WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
                 while (( elapsed < WAIT_TOTAL )); do
                   dots+="."
