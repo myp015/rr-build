@@ -159,7 +159,7 @@ jobs:
       LANGUAGE: zh_CN
       DSM_VERSION: ${{ inputs.dsm_version }}
       KERNEL: official
-      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,hdddb,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
+      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
       ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
       RR_ASSET_URL: ${{ needs.resolve-release.outputs.asset_url }}
       RR_TAG: ${{ needs.resolve-release.outputs.tag }}
@@ -483,15 +483,21 @@ jobs:
 
             sleep 60
             REBOOT_OK=0
-            for i in $(seq 1 30); do
-              OUT=$(curl -sS --max-time 3 "http://127.0.0.1:${HOST_PORT}" 2>/dev/null || true)
+            for i in $(seq 1 60); do
+              OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
               if [ -n "$OUT" ]; then
-                echo "[DEBUG] workflow 主机 curl 有输出，判定启动成功（try=$i, port=${HOST_PORT}）"
-                echo "$OUT" | sed -n '1,8p'
+                echo "[INFO] 启动成功,等待安装套件..."
+                WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
+                while (( elapsed < WAIT_TOTAL )); do
+                  dots+="."
+                  printf "\r正在安装系统套件%s (%ds/%ds)" "$dots" "$elapsed" "$WAIT_TOTAL"
+                  sleep "$WAIT_STEP"
+                  elapsed=$(( elapsed + WAIT_STEP ))
+                done
+                printf "\r正在安装系统套件%s 完成\n" "$dots"
                 REBOOT_OK=1
                 break
               fi
-              echo "[DEBUG] wait reboot try=$i : 主机 curl 暂无输出 (port=${HOST_PORT})"
               sleep 10
             done
 

@@ -150,7 +150,7 @@ jobs:
       LANGUAGE: zh_CN
       DSM_VERSION: 7.2.1-69057-1
       KERNEL: official
-      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,hdddb,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
+      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
       ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
       RR_ASSET_URL: ${{ needs.resolve-release.outputs.asset_url }}
       RR_TAG: ${{ needs.resolve-release.outputs.tag }}
