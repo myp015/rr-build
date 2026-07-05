@@ -546,7 +546,7 @@ jobs:
               fi
               OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
               if [ -n "$OUT" ]; then
-                echo "[INFO] 启动成功(try=$i), 进入套件安装稳定等待"
+                echo "[INFO] 启动成功(try=$i), 等待安装系统套件.."
                 REBOOT_OK=1
                 break
               fi
@@ -563,16 +563,20 @@ jobs:
             WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
             while (( elapsed < WAIT_TOTAL )); do
               dots+="."
-              printf "正在安装系统套件%s (%ds/%ds)" "$dots" "$elapsed" "$WAIT_TOTAL"
+
+              printf "\r\033[K[INFO] 安装系统套件 %s (%ds/%ds)" \
+                "$dots" "$elapsed" "$WAIT_TOTAL"
+
               if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
-                printf "
-                    [E] dsm 容器已退出, 停止等待"
+                printf "\n[E] dsm 容器已退出\n"
                 break
               fi
+
               sleep "$WAIT_STEP"
               elapsed=$(( elapsed + WAIT_STEP ))
             done
-            printf "正在安装系统套件%s 完成" "$dots"
+
+            printf "\n"
 
             # 3) 收尾再抓一次快照, 方便排查 (仍然非跟随)
             docker logs --tail 100 dsm 2>&1 || true
