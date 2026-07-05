@@ -647,45 +647,59 @@ jobs:
               exit "$FIRST_RC"
             fi
 
-            echo "[INFO] 安装完成后实时输出 rr 日志，并在重启1分钟后检测 web 输出（最长5分钟）"
-            rm -f /tmp/dsm_boot.log
-            docker logs --tail 200 dsm 2>&1 || true
-            docker logs -f dsm 2>&1 | tee /tmp/dsm_boot.log &
-            LOG_PID=$!
 
-            sleep 60
+
+            echo "[INFO] 安装完成, 抓取容器日志快照"
+            docker logs --tail 200 dsm 2>&1 || true
+
+            # 1) 先等待重启后 web 就绪 (最长 ~10 分钟), 全程前台探活, 不开 docker logs -f
             REBOOT_OK=0
             for i in $(seq 1 60); do
+              # 容器若已退出, 立即判失败, 不再空等
+              if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
+                echo "[E] dsm 容器已退出, 启动失败"
+                break
+              fi
               OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
               if [ -n "$OUT" ]; then
-                echo "[INFO] 启动成功,等待安装套件..."
-                WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
-                while (( elapsed < WAIT_TOTAL )); do
-                  dots+="."
-                  printf "\r正在安装系统套件%s (%ds/%ds)" "$dots" "$elapsed" "$WAIT_TOTAL"
-                  sleep "$WAIT_STEP"
-                  elapsed=$(( elapsed + WAIT_STEP ))
-                done
-                printf "\r正在安装系统套件%s 完成\n" "$dots"
+                echo "[INFO] 启动成功(try=$i), 等待安装系统套件.."
                 REBOOT_OK=1
                 break
               fi
               sleep 10
             done
 
-            # 杀掉后台日志: 先杀 pipeline pid, 再兜底按名字杀残留的 docker logs -f
-            kill "$LOG_PID" >/dev/null 2>&1 || true
-            pkill -f "docker logs -f dsm" >/dev/null 2>&1 || true
-            # 不要无条件 wait, 最多等 5 秒, 超时不阻塞
-            timeout 5 wait "$LOG_PID" 2>/dev/null || true
-            echo "[INFO] 后台日志进程已清理"
-
             if [ "$REBOOT_OK" != "1" ]; then
-              echo "[E] 5分钟内工作流主机 curl http://127.0.0.1:5000 无输出，判定启动失败"
+              echo "[E] 重启后 web 未就绪, 启动失败"
+              docker logs --tail 200 dsm 2>&1 || true
               exit 1
             fi
 
-            echo "[INFO] 已确认启动成功,开始停止并删除容器"
+            # 2) 套件安装稳定等待: 边等边探活, 容器掉线就早停 (不再盲等满 300s)
+            WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
+            while (( elapsed < WAIT_TOTAL )); do
+              dots+="."
+
+              printf "\r\033[K[INFO] 安装系统套件 %s (%ds/%ds)" \
+                "$dots" "$elapsed" "$WAIT_TOTAL"
+
+              if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
+                printf "\n[E] dsm 容器已退出\n"
+                break
+              fi
+
+              sleep "$WAIT_STEP"
+              elapsed=$(( elapsed + WAIT_STEP ))
+            done
+
+            printf "\n"
+
+            # 3) 收尾再抓一次快照, 方便排查 (仍然非跟随)
+            docker logs --tail 300 dsm 2>&1 || true
+            
+            
+
+            echo "[INFO] 启动成功,开始停止并删除容器"
             cd /tmp/dsm-install
             docker compose -f docker-compose.yaml down -v || true
 

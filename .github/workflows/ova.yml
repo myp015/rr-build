@@ -533,7 +533,7 @@ jobs:
           fi
 
 
-            echo "[INFO] 安装完成, 抓取一段容器日志快照(非跟随, 不开后台进程)"
+            echo "[INFO] 安装完成, 抓取容器日志快照"
             docker logs --tail 200 dsm 2>&1 || true
 
             # 1) 先等待重启后 web 就绪 (最长 ~10 分钟), 全程前台探活, 不开 docker logs -f
@@ -541,7 +541,7 @@ jobs:
             for i in $(seq 1 60); do
               # 容器若已退出, 立即判失败, 不再空等
               if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
-                echo "[E] dsm 容器已退出, 判定启动失败"
+                echo "[E] dsm 容器已退出, 启动失败"
                 break
               fi
               OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
@@ -554,7 +554,7 @@ jobs:
             done
 
             if [ "$REBOOT_OK" != "1" ]; then
-              echo "[E] 重启后 web 未就绪, 判定启动失败"
+              echo "[E] 重启后 web 未就绪, 启动失败"
               docker logs --tail 200 dsm 2>&1 || true
               exit 1
             fi
@@ -579,12 +579,12 @@ jobs:
             printf "\n"
 
             # 3) 收尾再抓一次快照, 方便排查 (仍然非跟随)
-            docker logs --tail 100 dsm 2>&1 || true
+            docker logs --tail 300 dsm 2>&1 || true
 
 
 
 
-            echo "[INFO] 启动成功,停止并删除容器"
+            echo "[INFO] 启动成功,开始停止并删除容器"
             cd "$WORKDIR/rr"
             docker compose -f docker-compose.yaml down -v || true
 
