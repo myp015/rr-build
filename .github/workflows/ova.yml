@@ -520,7 +520,7 @@ jobs:
           HOST_PORT=5000
           echo "[INFO] 执行自动安装监控程序"
           set +e
-          MAX_MINUTES=5 TARGET_PORT=${HOST_PORT} bash "$AINAS2IN1_DIR/script/dsm_install_watch.sh" 127.0.0.1 "$PAT_FILE"
+          MAX_MINUTES=5 TARGET_PORT=${HOST_PORT} bash "$AINAS2IN1_DIR/script/dsm_auto_install.sh" 127.0.0.1 "$PAT_FILE"
           FIRST_RC=$?
           set -e
           if [ "$FIRST_RC" -ne 0 ]; then
