@@ -104,7 +104,7 @@ jobs:
           fi
 
           RR_TAG="$(printf '%s' "$JSON" | jq -r '.tag_name' | sed 's/^v//')"
-          ASSET_URL="$(printf '%s' "$JSON" | jq -r '.assets[]? | select(.name | test("^rr-.*\\.img\\.zip$")) | .browser_download_url' | head -n1)"
+          ASSET_URL="$(printf '%s' "$JSON" | jq -r '.assets[]? | select(.name | test("^rr-.*[.]img[.]zip$")) | .browser_download_url' | head -n1)"
           if [ -z "$RR_TAG" ] || [ "$RR_TAG" = "null" ] || [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
             echo "[E] 下载失败 (rr_version=${REQ_RAW:-latest})"
             exit 1

@@ -94,7 +94,7 @@ jobs:
           fi
 
           tag="$(printf '%s' "$json" | jq -r '.tag_name' | sed 's/^v//')"
-          asset_url="$(printf '%s' "$json" | jq -r '.assets[]? | select(.name | test("^rr-.*\\.img\\.zip$")) | .browser_download_url' | head -n1)"
+          asset_url="$(printf '%s' "$json" | jq -r '.assets[]? | select(.name | test("^rr-.*[.]img[.]zip$")) | .browser_download_url' | head -n1)"
           if [ -z "$tag" ] || [ "$tag" = "null" ] || [ -z "$asset_url" ] || [ "$asset_url" = "null" ]; then
             echo "下载失败：无法解析 RR 发布信息 (rr_version=${req_raw:-latest})"
             exit 1
