@@ -434,7 +434,7 @@ jobs:
 
           # ── 使用 RR Docker 编译镜像（非 UPDATE 模式）─────────────
           if [ "${UPDATE_ONLY}" != "true" ]; then
-            cat > build.sh <<EOF2
+            cat > build.sh <<          EOF2
             set -eo pipefail
             . menu.sh
             TARGET_DSM_VERSION="${TARGET_DSM_VERSION}"
@@ -485,7 +485,7 @@ jobs:
 
             rm -rf /mnt/p3/ssh || true
             menu.sh cleanCache
-EOF2
+          EOF2
 
             chmod +x build.sh
 
@@ -560,25 +560,41 @@ EOF2
             curl -fsSL --connect-timeout 15 "$PAT_XLSX_URL" -o "$PAT_XLSX"
 
             python3 -m pip -q install --user openpyxl
-            PAT_LINE=$(python3 -c "
-import os,re,openpyxl
-wb=openpyxl.load_workbook('$PAT_XLSX',data_only=True)
-ws=wb[wb.sheetnames[0]]
-model=os.environ['MODEL']
-line_req=os.environ.get('DSM_LINE_REQ','7.3.2')
-rows=[(
-  ('' if r[0] is None else str(r[0]).strip()),
-  ('' if len(r)<2 or r[1] is None else str(r[1]).strip()),
-  ('' if len(r)<3 or r[2] is None else str(r[2]).strip())
-) for r in ws.iter_rows(min_row=1,values_only=True)]
-rows=[t for t in rows if t[0] and t[1] and t[2] and not (t[0].lower()=='model' and t[1].lower().startswith('version'))]
-cand=[(v,u) for m,v,u in rows if m==model and v.startswith(line_req+'-')]
-allm=[(v,u) for m,v,u in rows if m==model]
-sel=cand if cand else allm
-sel or (_ for _ in ()).throw(SystemExit(f'未找到型号={model} 的 PAT 记录'))
-best=sorted(sel,key=lambda x:[int(t) for t in re.findall(r'\d+',x[0])],reverse=True)[0]
-print(best[0]+'\t'+best[1])
-")
+            # 将 Python 脚本写入临时文件，彻底避免引号嵌套问题
+            cat << 'PYEOF' > /tmp/parse_pat.py
+             import os, re, openpyxl
+
+             wb = openpyxl.load_workbook(os.environ["PAT_XLSX"], data_only=True)
+             ws = wb[wb.sheetnames[0]]
+             model    = os.environ["MODEL"]
+             line_req = os.environ.get("DSM_LINE_REQ", "7.3.2")
+
+             rows = [
+                 (
+                     ("" if r[0] is None else str(r[0]).strip()),
+                     ("" if len(r) < 2 or r[1] is None else str(r[1]).strip()),
+                     ("" if len(r) < 3 or r[2] is None else str(r[2]).strip()),
+                 )
+                 for r in ws.iter_rows(min_row=1, values_only=True)
+             ]
+             rows = [
+                 t for t in rows
+                 if t[0] and t[1] and t[2]
+                 and not (t[0].lower() == "model" and t[1].lower().startswith("version"))
+             ]
+
+             cand = [(v, u) for m, v, u in rows if m == model and v.startswith(line_req + "-")]
+             allm = [(v, u) for m, v, u in rows if m == model]
+             sel  = cand if cand else allm
+
+             if not sel:
+                 raise SystemExit(f"未找到型号={model} 的 PAT 记录")
+
+             best = sorted(sel, key=lambda x: [int(t) for t in re.findall(r"\d+", x[0])], reverse=True)[0]
+             print(best[0] + "\t" + best[1])
+            PYEOF
+
+            PAT_LINE=$(PAT_XLSX="$PAT_XLSX" python3 /tmp/parse_pat.py)
             PAT_VERSION="${PAT_LINE%%$'\t'*}"
             PAT_URL="${PAT_LINE#*$'\t'}"
             [ -n "$PAT_VERSION" ] && [ -n "$PAT_URL" ] || { echo "[E] PAT 解析失败"; exit 1; }
