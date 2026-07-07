@@ -396,7 +396,7 @@ jobs:
 
           RR_IMAGE_TAG="$TAG"
           if [ "$TAG" != "25.9.7" ] && [ "$(printf '%s
-' "$TAG" "25.9.7" | sort -V | head -n1)" = "$TAG" ]; then
+            ' "$TAG" "25.9.7" | sort -V | head -n1)" = "$TAG" ]; then
             RR_IMAGE_TAG="25.9.7"
           fi
           echo "[INFO] RR Docker 镜像标签=${RR_IMAGE_TAG}"
@@ -426,7 +426,7 @@ jobs:
           sudo losetup --detach "$USER_LOOP" || true
 
           if [ "$(printf '%s
-' "${TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
+           ' "${TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
             GRUB_IMG="ainas/grub2.14.img.gz"
           else
             GRUB_IMG="ainas/grub2.12.img.gz"
@@ -607,15 +607,15 @@ print(best[0]+'	'+best[1])
             printf "\033[K[INFO] 正在安装系统套件 %s (%ds/%ds)" "$DOTS" "$ELAPSED" "$WAIT_TOTAL"
             if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
               printf "
-[E] dsm 容器已退出
-"
+            [E] dsm 容器已退出
+             "
               break
             fi
             sleep "$WAIT_STEP"
             ELAPSED=$(( ELAPSED + WAIT_STEP ))
           done
           printf "
-"
+           "
 
           docker logs --tail 300 dsm 2>&1 || true
 
