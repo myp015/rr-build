@@ -10,9 +10,12 @@ on:
   workflow_dispatch:
     inputs:
       all_models:
-        description: "★ 全选/取消所有型号 (勾选后将忽略下方单个型号的勾选，直接编译所有支持型号)"
-        type: boolean
-        default: false
+        description: "编译模式"
+        type: choice
+        options:
+          - 自选
+          - 全选
+        default: 自选
       model_ds918p:
         description: "DS918+"
         type: boolean
@@ -130,7 +133,7 @@ jobs:
           set -euo pipefail
           MODELS=()
 
-          if [ "${{ inputs.all_models }}" = "true" ]; then
+          if [ "${{ inputs.all_models }}" = "全选" ]; then
             echo "[INFO] 已开启全选，将编译所有支持的型号"
             MODELS+=("DS918+" "DS920+" "DS923+" "DS925+" "DS3622xs+" "SA6400" "DS425+" "DVA3221" "DVA1622")
           else
