@@ -672,7 +672,7 @@ jobs:
             echo "[INFO] 安装完成，正在抓取容器日志快照"
             docker logs --tail 200 dsm 2>&1 || true
 
-         # ── 等待重启后 Web 就绪 ───────────────────────────────────
+            # ── 等待重启后 Web 就绪 ───────────────────────────────────
             REBOOT_OK=0
             for i in $(seq 1 60); do
                 if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
