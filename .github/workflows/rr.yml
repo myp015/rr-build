@@ -9,6 +9,10 @@ name: RR Build
 on:
   workflow_dispatch:
     inputs:
+      all_models:
+        description: "★ 全选/取消所有型号 (勾选后将忽略下方单个型号的勾选，直接编译所有支持型号)"
+        type: boolean
+        default: false
       model_ds918p:
         description: "DS918+"
         type: boolean
@@ -54,26 +58,37 @@ on:
           - 4GB
         default: 2.5GB
       rr_version:
-        description: "RR version (可选，留空=latest；示例：26.4.0 或 v26.4.0)"
+        description: "RR version (可选,留空=latest;示例:26.4.0 或 v26.4.0)"
         type: string
         default: ""
+      dsm_version:
+        description: "DSM 版本编号（从 pats.xlsx 获取，选择 >= 7.2.1 的所有版本）"
+        type: choice
+        options:
+          - "7.2.1"
+          - "7.2.2"
+          - "7.3.0"
+          - "7.3.1"
+          - "7.3.2"
+          - "7.4.0"
+        default: "7.2.1"
 
 jobs:
   resolve-release:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.pick.outputs.tag }}
-      asset_url: ${{ steps.pick.outputs.asset_url }}
+      rr_tag: ${{ steps.pick.outputs.rr_tag }}
+      rr_asset_url: ${{ steps.pick.outputs.rr_asset_url }}
     steps:
       - id: pick
         shell: bash
         run: |
           set -euo pipefail
-          req_raw="${{ inputs.rr_version }}"
-          req_tag="$(printf '%s' "$req_raw" | tr -d '[:space:]')"
-          req_tag="${req_tag#rr-}"
-          req_tag="${req_tag%.img.zip}"
-          req_tag="${req_tag#v}"
+          REQ_RAW="${{ inputs.rr_version }}"
+          REQ_TAG="$(printf '%s' "$REQ_RAW" | tr -d '[:space:]')"
+          REQ_TAG="${REQ_TAG#rr-}"
+          REQ_TAG="${REQ_TAG%.img.zip}"
+          REQ_TAG="${REQ_TAG#v}"
 
           fetch_latest() {
             curl -fsSL --connect-timeout 10 "https://api.github.com/repos/RROrg/rr/releases/latest"
@@ -83,25 +98,26 @@ jobs:
             curl -fsSL --connect-timeout 10 "https://api.github.com/repos/RROrg/rr/releases/tags/${t}"
           }
 
-          if [ -z "$req_tag" ] || [ "$req_tag" = "latest" ]; then
-            echo "[INFO] rr_version 未填写，自动使用 latest"
-            json="$(fetch_latest)"
+          if [ -z "$REQ_TAG" ] || [ "$REQ_TAG" = "latest" ]; then
+            echo "[INFO] 未填写 rr_version，自动使用 latest"
+            RELEASE_JSON="$(fetch_latest)"
           else
-            if ! json="$(fetch_tag "$req_tag" 2>/dev/null)"; then
-              echo "[WARN] rr_version=${req_raw} 未找到对应 tag，自动回退到 latest"
-              json="$(fetch_latest)"
+            if ! RELEASE_JSON="$(fetch_tag "$REQ_TAG" 2>/dev/null)"; then
+              echo "[INFO] 指定版本 rr_version=${REQ_RAW} 未找到，回退到最新版本"
+              RELEASE_JSON="$(fetch_latest)"
             fi
           fi
 
-          tag="$(printf '%s' "$json" | jq -r '.tag_name' | sed 's/^v//')"
-          asset_url="$(printf '%s' "$json" | jq -r '.assets[]? | select(.name | test("^rr-.*[.]img[.]zip$")) | .browser_download_url' | head -n1)"
-          if [ -z "$tag" ] || [ "$tag" = "null" ] || [ -z "$asset_url" ] || [ "$asset_url" = "null" ]; then
-            echo "下载失败：无法解析 RR 发布信息 (rr_version=${req_raw:-latest})"
+          RR_TAG="$(printf '%s' "$RELEASE_JSON" | jq -r '.tag_name' | sed 's/^v//')"
+          RR_ASSET_URL="$(printf '%s' "$RELEASE_JSON" | jq -r '.assets[]? | select(.name | test("^rr-.*[.]img[.]zip$")) | .browser_download_url' | head -n1)"
+          if [ -z "$RR_TAG" ] || [ "$RR_TAG" = "null" ] || [ -z "$RR_ASSET_URL" ] || [ "$RR_ASSET_URL" = "null" ]; then
+            echo "[E] 下载失败：无法解析 RR 发布信息 (rr_version=${REQ_RAW:-latest})"
             exit 1
           fi
 
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "asset_url=$asset_url" >> "$GITHUB_OUTPUT"
+          echo "[INFO] 已解析 RR 版本：${RR_TAG}"
+          echo "rr_tag=$RR_TAG" >> "$GITHUB_OUTPUT"
+          echo "rr_asset_url=$RR_ASSET_URL" >> "$GITHUB_OUTPUT"
 
   select-models:
     runs-on: ubuntu-latest
@@ -112,283 +128,307 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          models=()
-          [ "${{ inputs.model_ds918p }}" = "true" ] && models+=("DS918+")
-          [ "${{ inputs.model_ds920p }}" = "true" ] && models+=("DS920+")
-          [ "${{ inputs.model_ds923p }}" = "true" ] && models+=("DS923+")
-          [ "${{ inputs.model_ds925p }}" = "true" ] && models+=("DS925+")
-          [ "${{ inputs.model_ds3622xsp }}" = "true" ] && models+=("DS3622xs+")
-          [ "${{ inputs.model_sa6400 }}" = "true" ] && models+=("SA6400")
-          [ "${{ inputs.model_ds425p }}" = "true" ] && models+=("DS425+")
-          [ "${{ inputs.model_dva3221 }}" = "true" ] && models+=("DVA3221")
-          [ "${{ inputs.model_dva1622 }}" = "true" ] && models+=("DVA1622")
+          MODELS=()
 
-          if [ ${#models[@]} -eq 0 ]; then
-            echo "请至少勾选一个型号"
+          if [ "${{ inputs.all_models }}" = "true" ]; then
+            echo "[INFO] 已开启全选，将编译所有支持的型号"
+            MODELS+=("DS918+" "DS920+" "DS923+" "DS925+" "DS3622xs+" "SA6400" "DS425+" "DVA3221" "DVA1622")
+          else
+            [ "${{ inputs.model_ds918p }}"    = "true" ] && MODELS+=("DS918+")
+            [ "${{ inputs.model_ds920p }}"    = "true" ] && MODELS+=("DS920+")
+            [ "${{ inputs.model_ds923p }}"    = "true" ] && MODELS+=("DS923+")
+            [ "${{ inputs.model_ds925p }}"    = "true" ] && MODELS+=("DS925+")
+            [ "${{ inputs.model_ds3622xsp }}" = "true" ] && MODELS+=("DS3622xs+")
+            [ "${{ inputs.model_sa6400 }}"    = "true" ] && MODELS+=("SA6400")
+            [ "${{ inputs.model_ds425p }}"    = "true" ] && MODELS+=("DS425+")
+            [ "${{ inputs.model_dva3221 }}"   = "true" ] && MODELS+=("DVA3221")
+            [ "${{ inputs.model_dva1622 }}"   = "true" ] && MODELS+=("DVA1622")
+          fi
+
+          # 去重
+          UNIQ_MODELS=()
+          for MODEL_ITEM in "${MODELS[@]}"; do
+            SKIP=0
+            for SEEN_ITEM in "${UNIQ_MODELS[@]}"; do
+              [ "$SEEN_ITEM" = "$MODEL_ITEM" ] && { SKIP=1; break; }
+            done
+            [ $SKIP -eq 0 ] && UNIQ_MODELS+=("$MODEL_ITEM")
+          done
+          MODELS=("${UNIQ_MODELS[@]}")
+
+          if [ ${#MODELS[@]} -eq 0 ]; then
+            echo "[E] 请至少勾选一个型号"
             exit 1
           fi
-          echo "[INFO] 已选择型号: ${models[*]}"
 
-          json="["
-          for m in "${models[@]}"; do
-            json+="\"$m\"," 
+          echo "[INFO] 已选择型号: ${MODELS[*]}"
+          MODELS_JSON="["
+          for MODEL_ITEM in "${MODELS[@]}"; do
+            MODELS_JSON+=""$MODEL_ITEM","
           done
-          json="${json%,}]"
-          echo "models=$json" >> "$GITHUB_OUTPUT"
+          MODELS_JSON="${MODELS_JSON%,}]"
+          echo "models=$MODELS_JSON" >> "$GITHUB_OUTPUT"
 
   build:
+    name: ${{ format('build ({0})', matrix.model) }}
     needs: [resolve-release, select-models]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
- #     max-parallel: 3
+      # max-parallel: 3
       matrix:
         model: ${{ fromJson(needs.select-models.outputs.models) }}
     env:
-      FORMAT: img
-      SIZE: ${{ inputs.image_size }}
-      LANGUAGE: zh_CN
-      DSM_VERSION: 7.2.1-69057-1
-      KERNEL: official
-      ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
+      IMAGE_FORMAT: img
+      IMAGE_SIZE: ${{ inputs.image_size }}
+      BUILD_LANGUAGE: zh_CN
+      BUILD_KERNEL: official
+      BUILD_ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
       ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
-      RR_ASSET_URL: ${{ needs.resolve-release.outputs.asset_url }}
-      RR_TAG: ${{ needs.resolve-release.outputs.tag }}
+      RR_ASSET_URL: ${{ needs.resolve-release.outputs.rr_asset_url }}
+      RR_TAG: ${{ needs.resolve-release.outputs.rr_tag }}
+      MODEL_NAME: ${{ matrix.model }}
+      DSM_LINE: ${{ inputs.dsm_version }}
     steps:
-      - uses: actions/checkout@main
+      - name: Checkout main repo
+        uses: actions/checkout@main
 
-      - name: Init Env
+      - name: 初始化环境
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           sudo timedatectl set-timezone "Asia/Shanghai"
 
-      - name: Fetch RR Release Asset
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${RR_TAG:?missing RR_TAG}"
-          : "${RR_ASSET_URL:?missing RR_ASSET_URL}"
-          filename="rr-${RR_TAG}.img.zip"
-          curl -fsSL --connect-timeout 10 "$RR_ASSET_URL" -o "$filename"
-          echo "TAG=$RR_TAG" >> "$GITHUB_ENV"
-          echo "FILENAME=$filename" >> "$GITHUB_ENV"
+      - name: Checkout ainas2in1
+        uses: actions/checkout@v4
+        with:
+          repository: myp015/ainas2in1
+          token: ${{ secrets.ACTION_TOKEN }}
+          path: .2in1
 
-      - name: Build Image
+      - name: 下载 RR 镜像资源
         shell: bash
-        env:
-          MODEL: ${{ matrix.model }}
         run: |
           set -euo pipefail
+          : "${RR_TAG:?缺少 RR_TAG}"
+          : "${RR_ASSET_URL:?缺少 RR_ASSET_URL}"
+          RR_FILENAME="rr-${RR_TAG}.img.zip"
+          echo "[INFO] 正在下载 RR 镜像资源：${RR_FILENAME}"
+          curl -fsSL --connect-timeout 10 "$RR_ASSET_URL" -o "$RR_FILENAME"
+          echo "RR_TAG=$RR_TAG" >> "$GITHUB_ENV"
+          echo "RR_FILENAME=$RR_FILENAME" >> "$GITHUB_ENV"
+
+      - name: 编译镜像
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ── 目录与常量 ────────────────────────────────────────────
+          WORK_DIR="$PWD"
+          AINAS_DIR="${WORK_DIR}/.2in1"
+          GRUB_MNT="/mnt/p1"
+          SYSTEM_MNT="/mnt/p3"
+
+          # ── DSM 版本映射（版本编号来自 pats.xlsx，仅 >= 7.2.1）──────
           pick_target_dsm_version() {
-            local model="$1"
-            case "$model" in
-              DS925+|DS425+)
-                printf '7.2.2-72806-0'
-                ;;
-              DVA3221|DVA1622)
-                printf '7.2.1-69057-1'
-                ;;
+            local line="$1"
+            case "$line" in
+              7.2.1) printf '7.2.1-69057-1'  ;;
+              7.2.2) printf '7.2.2-72806-0'  ;;
+              7.3.0) printf '7.3.0-82510-0'  ;;
+              7.3.1) printf '7.3.1-84930-0'  ;;
+              7.3.2) printf '7.3.2-86009-0'  ;;
+              7.4.0) printf '7.4.0-101188-0' ;;
               *)
-                printf '%s' "${DSM_VERSION}"
+                echo "[E] 不支持的 DSM 版本: $line" >&2
+                return 1
                 ;;
             esac
           }
-          TARGET_DSM_VERSION="$(pick_target_dsm_version "${MODEL}")"
-          artifact_version="$(case "${TARGET_DSM_VERSION}" in
-            7.2.2-72806-0) printf '722_72806' ;;
-            7.2.1-69057-1) printf '721_69057' ;;
-            7.2.1-69057-1|7.2.1-69057-0) printf '721_69057' ;;
-            *)
-              ver_main="${TARGET_DSM_VERSION%%-*}"
-              ver_major_minor="${ver_main#7.}"
-              ver_build="${TARGET_DSM_VERSION#*-}"
-              ver_build="${ver_build%%-*}"
-              printf '%s_%s' "${ver_major_minor//./}" "${ver_build}"
-              ;;
-          esac)"
-          artifact="${MODEL}_${artifact_version}_rr"
-          echo "[DEBUG] model=${MODEL} target_dsm_version=${TARGET_DSM_VERSION} artifact_version=${artifact_version}"
-          if echo "${MODEL}" | grep -Eq '^(DS925\+|DS425\+)$'; then
-            [ "${artifact_version}" = "722_72806" ] || { echo "[E] artifact_version mismatch for ${MODEL}: ${artifact_version}"; exit 1; }
-          else
-            [ "${artifact_version}" = "721_69057" ] || { echo "[E] artifact_version mismatch for ${MODEL}: ${artifact_version}"; exit 1; }
+
+          DSM_LINE_REQ="${DSM_LINE:-7.2.1}"
+          if echo "${MODEL_NAME}" | grep -Eq '^(DS925\+|DS425\+)$' && [ "${DSM_LINE_REQ}" = "7.2.1" ]; then
+            echo "[INFO] ${MODEL_NAME} 不支持 DSM 7.2.1，自动切换到 7.2.2"
+            DSM_LINE_REQ="7.2.2"
           fi
 
+          DSM_VERSION="$(pick_target_dsm_version "${DSM_LINE_REQ}")"
+          DSM_VERSION_MAIN="${DSM_VERSION%%-*}"
+          DSM_VERSION_BUILD="${DSM_VERSION#*-}"
+          DSM_VERSION_BUILD="${DSM_VERSION_BUILD%%-*}"
+          DSM_VERSION_SLUG="${DSM_VERSION_MAIN//./}_${DSM_VERSION_BUILD}"
+          ARTIFACT_NAME="${MODEL_NAME}_${DSM_VERSION_SLUG}_rr"
+          echo "[INFO] 型号=${MODEL_NAME} 目标DSM版本=${DSM_VERSION} DSM系列=${DSM_LINE_REQ} 版本slug=${DSM_VERSION_SLUG}"
+
+          # ── 系统依赖 ──────────────────────────────────────────────
+          echo "[INFO] 正在安装构建依赖"
           sudo apt-get update
           sudo apt-get install -y gettext cpio zstd dosfstools rsync qemu-utils
-          unzip "$FILENAME" -d rr rr.img
+          unzip "$RR_FILENAME" -d rr rr.img
           cp -f rr/rr.img rr/rr.base.img
 
-          WORKDIR="$PWD"
-          AINAS2IN1_DIR="${WORKDIR}/.2in1"
-          rm -rf "$AINAS2IN1_DIR"
-          mkdir -p "$AINAS2IN1_DIR"
-          git clone --depth 1 "https://x-access-token:${ACTION_TOKEN}@github.com/myp015/ainas2in1.git" "$AINAS2IN1_DIR"
-
-          grub_mnt="/mnt/p1"
+          # ── GRUB 修补 ─────────────────────────────────────────────
+          GRUB_LOOP=$(sudo losetup -f)
           sudo mkdir -p /mnt/p1 /mnt/p2 /mnt/p3
-          grub_loop=$(sudo losetup -f)
-          sudo losetup -P "$grub_loop" rr/rr.img
+          sudo losetup -P "$GRUB_LOOP" rr/rr.img
 
-          sudo mount -o rw "${grub_loop}p1" "$grub_mnt"
-          echo "[DEBUG] grub.cfg patch starts"
-          sudo env MODEL_ENV="$MODEL" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$grub_mnt/boot/grub/grub.cfg"
-          echo "[DEBUG] grub.cfg patch succeeded"
-          sudo umount "$grub_mnt" || true
-          sudo losetup --detach "$grub_loop" || true
+          sudo mount -o rw "${GRUB_LOOP}p1" "$GRUB_MNT"
+          echo "[INFO] 开始修补 grub.cfg"
+          sudo env MODEL_ENV="$MODEL_NAME" python3 "$AINAS_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
+          echo "[INFO] grub.cfg 修补成功"
+          sudo umount "$GRUB_MNT" || true
+          sudo losetup --detach "$GRUB_LOOP" || true
 
-          loopx=$(sudo losetup -f)
-          sudo losetup -P "$loopx" rr/rr.img
+          # ── 挂载 p3 分区 ──────────────────────────────────────────
+          DISK_LOOP=$(sudo losetup -f)
+          sudo losetup -P "$DISK_LOOP" rr/rr.img
+          sudo rm -rf "$SYSTEM_MNT"
+          sudo mkdir -p "$SYSTEM_MNT"
+          sudo mount "${DISK_LOOP}p3" "$SYSTEM_MNT"
 
-          sudo rm -rf /mnt/p3
-          sudo mkdir -p /mnt/p3
-          sudo mount "${loopx}p3" /mnt/p3
-
-          echo "[DEBUG] cpuinfo patch starts"
-          CPUINFO_TGZ="/mnt/p3/addons/cpuinfo/all.tgz"
+          # ── cpuinfo 修补 ──────────────────────────────────────────
+          echo "[INFO] 开始修补 cpuinfo"
+          CPUINFO_TGZ="$SYSTEM_MNT/addons/cpuinfo/all.tgz"
           CPUINFO_WORK="/tmp/cpuinfo_patch"
           if [ -f "$CPUINFO_TGZ" ]; then
             rm -rf "$CPUINFO_WORK"
             mkdir -p "$CPUINFO_WORK/extract" "$CPUINFO_WORK/rootfs"
-
             sudo tar -zxf "$CPUINFO_TGZ" -C "$CPUINFO_WORK/extract"
 
-            PATCH_TARGET=""
-            REPACK_MODE=""
-
+            CPUINFO_PATCH_TARGET=""
+            CPUINFO_REPACK_MODE=""
             if [ -f "$CPUINFO_WORK/extract/all.tar" ]; then
-              REPACK_MODE="inner-tar"
+              CPUINFO_REPACK_MODE="inner-tar"
               sudo tar -xf "$CPUINFO_WORK/extract/all.tar" -C "$CPUINFO_WORK/rootfs"
-              if [ -f "$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh" ]; then
-                PATCH_TARGET="$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh"
-              fi
+              [ -f "$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh" ] && \
+                CPUINFO_PATCH_TARGET="$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh"
             elif [ -f "$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh" ]; then
-              REPACK_MODE="direct"
-              PATCH_TARGET="$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh"
+              CPUINFO_REPACK_MODE="direct"
+              CPUINFO_PATCH_TARGET="$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh"
             fi
 
-            if [ -n "$PATCH_TARGET" ]; then
-              python3 "$AINAS2IN1_DIR/script/patch-cpuinfo.py" "$PATCH_TARGET"
-              if [ "$REPACK_MODE" = "inner-tar" ]; then
-                (cd "$CPUINFO_WORK/rootfs" && sudo tar -cf "$CPUINFO_WORK/extract/all.tar" .)
+            if [ -n "$CPUINFO_PATCH_TARGET" ]; then
+              python3 "$AINAS_DIR/script/patch-cpuinfo.py" "$CPUINFO_PATCH_TARGET"
+              if [ "$CPUINFO_REPACK_MODE" = "inner-tar" ]; then
+                (cd "$CPUINFO_WORK/rootfs"  && sudo tar -cf "$CPUINFO_WORK/extract/all.tar" .)
                 (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
               else
                 (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
               fi
-              echo "[DEBUG] cpuinfo all.tgz repacked successfully (mode=$REPACK_MODE)"
+              echo "[INFO] cpuinfo all.tgz 重新打包成功 (模式=$CPUINFO_REPACK_MODE)"
             else
-              echo "[WARN] cpuinfo patch skipped: cpuinfo.sh not found in known all.tgz layouts"
+              echo "[INFO] cpuinfo.sh 未在已知 all.tgz 结构中找到，跳过 cpuinfo 修补"
             fi
           else
-            echo "[WARN] cpuinfo patch skipped: $CPUINFO_TGZ not found"
+            echo "[INFO] $CPUINFO_TGZ 不存在，跳过 cpuinfo 修补"
           fi
 
+          # ── initrd 修补与重打包 ───────────────────────────────────
           sudo mkdir -p /tmp/initrd_work
-
           cd /tmp/initrd_work
+          sudo zstd -dc "$SYSTEM_MNT/initrd-rr" | sudo cpio -idm
 
+          sudo bash "$AINAS_DIR/script/replace_ainas_po_notice.sh"
+          sudo AINAS_DIR="$AINAS_DIR" bash -c 'set -euo pipefail; . "${AINAS_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
 
-          sudo zstd -dc /mnt/p3/initrd-rr | sudo cpio -idm
+          echo "[INFO] 开始重新打包 initrd-rr"
+          sudo rm -f "$SYSTEM_MNT/initrd-rr"
+          sudo find . | sudo cpio -o -H newc -R root:root | sudo zstd -19 -T0 -f -c - | sudo tee "$SYSTEM_MNT/initrd-rr" >/dev/null
 
-          sudo bash "$AINAS2IN1_DIR/script/replace_ainas_po_notice.sh"
+          cd "$WORK_DIR"
+          sudo umount "$SYSTEM_MNT" || true
+          sudo rm -rf "$SYSTEM_MNT"
 
-          sudo AINAS2IN1_DIR="$AINAS2IN1_DIR" bash -c 'set -euo pipefail; . "${AINAS2IN1_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
-
-
-          echo "[INFO] 正在重新打包initrd-rr"
-          sudo rm -f /mnt/p3/initrd-rr
-          sudo find . | sudo cpio -o -H newc -R root:root | sudo zstd -19 -T0 -f -c - | sudo tee /mnt/p3/initrd-rr >/dev/null
-
-          cd "$WORKDIR"
-
-          sudo umount /mnt/p3 || true
-          sudo rm -rf /mnt/p3
-
-          cat > build.sh <<EOF
+          # ── 生成容器内构建脚本（变量通过 docker -e 注入，避免 sed 替换）──
+          cat > build.sh <<'EOF'
           set -eo pipefail
           . menu.sh
-          TARGET_DSM_VERSION="${TARGET_DSM_VERSION}"
-          echo "[DEBUG] model=${MODEL} target_dsm_version=\${TARGET_DSM_VERSION} artifact_version=\${artifact_version}"
-          menu.sh modelMenu "${MODEL}"
-          menu.sh productversMenu "\${TARGET_DSM_VERSION}"
-          LOCALE_FILE="\$(dirname "\${USER_CONFIG_FILE}")/.locale"
-          echo "${LANGUAGE}.UTF-8" >"\${LOCALE_FILE}"
-          echo "[DEBUG] locale file: \$(cat "\${LOCALE_FILE}" 2>/dev/null || echo MISSING)"
+          echo "[INFO] 型号=${MODEL_NAME} 目标DSM版本=${DSM_VERSION}"
+          menu.sh modelMenu "${MODEL_NAME}"
+          menu.sh productversMenu "${DSM_VERSION}"
+          LOCALE_FILE="$(dirname "${USER_CONFIG_FILE}")/.locale"
+          echo "${BUILD_LANGUAGE}.UTF-8" >"${LOCALE_FILE}"
+          echo "[INFO] locale 文件内容: $(cat "${LOCALE_FILE}" 2>/dev/null || echo 缺失)"
 
-          writeConfigKey "addons" "{}" "\${USER_CONFIG_FILE}"
+          writeConfigKey "addons" "{}" "${USER_CONFIG_FILE}"
           FORCE_NVME_CACHE=0
-          ADDONS_SEED="${ADDONS}"
-          echo "[DEBUG] ADDONS seed=\${ADDONS_SEED}"
-          IFS=',' read -ra ADDON_ARR <<< "\${ADDONS_SEED}"
+          ADDONS_SEED="${BUILD_ADDONS}"
+          echo "[INFO] ADDONS插件=${ADDONS_SEED}"
+          IFS=',' read -ra ADDON_ARR <<< "${ADDONS_SEED}"
           declare -A __SEEN_ADDON=()
-          for A in "\${ADDON_ARR[@]}"; do
-            if echo "\${A}" | grep -q ':'; then
-              KEY="\$(echo "\${A}" | cut -d':' -f1 | xargs)"
-              VAL="\$(echo "\${A}" | cut -d':' -f2- | xargs)"
+          for A in "${ADDON_ARR[@]}"; do
+            if echo "${A}" | grep -q ':'; then
+              ADDON_KEY="$(echo "${A}" | cut -d':' -f1 | xargs)"
+              ADDON_VAL="$(echo "${A}" | cut -d':' -f2- | xargs)"
             else
-              KEY="\$(echo "\${A}" | xargs)"
-              VAL=""
+              ADDON_KEY="$(echo "${A}" | xargs)"
+              ADDON_VAL=""
             fi
-            [ -z "\${KEY}" ] && continue
-            [ -n "\${__SEEN_ADDON[\${KEY}]}" ] && continue
-            __SEEN_ADDON[\${KEY}]=1
-            writeConfigKey "addons.\"\${KEY}\"" "\${VAL}" "\${USER_CONFIG_FILE}"
+            [ -z "${ADDON_KEY}" ] && continue
+            [ -n "${__SEEN_ADDON[${ADDON_KEY}]}" ] && continue
+            __SEEN_ADDON[${ADDON_KEY}]=1
+            writeConfigKey "addons.${ADDON_KEY}" "${ADDON_VAL}" "${USER_CONFIG_FILE}"
           done
-          if echo "${MODEL}" | grep -Eq '^(DS918\+|DS1019\+|DS1621xs\+|RS1619xs)$'; then
+          if echo "${MODEL_NAME}" | grep -Eq '^(DS918\+|DS1019\+|DS1621xs\+|RS1619xs)$'; then
             FORCE_NVME_CACHE=1
-            KEY="nvmecache"
-            VAL=""
-            writeConfigKey "addons.\"\${KEY}\"" "\${VAL}" "\${USER_CONFIG_FILE}"
+            ADDON_KEY="nvmecache"
+            ADDON_VAL=""
+            writeConfigKey "addons.${ADDON_KEY}" "${ADDON_VAL}" "${USER_CONFIG_FILE}"
           fi
-          echo "[DEBUG] model=${MODEL} force_nvmecache=\${FORCE_NVME_CACHE}"
+          echo "[INFO] 型号=${MODEL_NAME} 强制启用 nvmecache=${FORCE_NVME_CACHE}"
 
-          echo "[DEBUG] addons after custom write:"
-            readConfigMap "addons" "\${USER_CONFIG_FILE}" >/dev/null 2>&1 || true
+          readConfigMap "addons" "${USER_CONFIG_FILE}" >/dev/null 2>&1 || true
 
           menu.sh make
 
           rm -rf /mnt/p3/ssh || true
           menu.sh cleanCache
           EOF
-
           chmod +x build.sh
-          RR_IMAGE_TAG="$TAG"
-          if [ "$TAG" != "25.9.7" ] && [ "$(printf '%s\n' "$TAG" "25.9.7" | sort -V | head -n1)" = "$TAG" ]; then
+
+          RR_IMAGE_TAG="$RR_TAG"
+          if [ "$RR_TAG" != "25.9.7" ] && [ "$(printf '%s' "$RR_TAG" "25.9.7" | sort -V | head -n1)" = "$RR_TAG" ]; then
             RR_IMAGE_TAG="25.9.7"
           fi
-          echo "[DEBUG] rr docker image tag=${RR_IMAGE_TAG}"
+          echo "[INFO] RR Docker 镜像标签=${RR_IMAGE_TAG}"
           docker pull "wjz304/rr:${RR_IMAGE_TAG}"
           docker run --rm --privileged \
+            -e MODEL_NAME="${MODEL_NAME}" \
+            -e DSM_VERSION="${DSM_VERSION}" \
+            -e BUILD_LANGUAGE="${BUILD_LANGUAGE}" \
+            -e BUILD_ADDONS="${BUILD_ADDONS}" \
             -v "$PWD/build.sh:/opt/rr/build.sh" \
             -v "$PWD:$PWD" -w "$PWD" \
             "wjz304/rr:${RR_IMAGE_TAG}" bash /opt/rr/build.sh
 
-          sudo mkdir -p /mnt/p3
-          sudo mount "${loopx}p3" /mnt/p3 || true
+          # ── 清理 p3 临时文件 ──────────────────────────────────────
+          sudo mkdir -p "$SYSTEM_MNT"
+          sudo mount "${DISK_LOOP}p3" "$SYSTEM_MNT" || true
+          sudo rm -rf "$SYSTEM_MNT/dl" "$SYSTEM_MNT/auxfiles" "$SYSTEM_MNT/logs" || true
+          sudo umount "$SYSTEM_MNT" || true
+          sudo losetup --detach "$DISK_LOOP"
 
-          sudo rm -rf /mnt/p3/dl /mnt/p3/auxfiles /mnt/p3/logs || true
-          sudo umount /mnt/p3 || true
-
-          sudo losetup --detach "$loopx"
-          . "$AINAS2IN1_DIR/script/2in1func.sh"
-
-          usercfg="user-config.yml"
-          user_loop=$(sudo losetup -f)
-          sudo losetup -P "$user_loop" rr/rr.img
+          # ── 提取 user-config.yml ──────────────────────────────────
+          . "$AINAS_DIR/script/2in1func.sh"
+          USER_CONFIG_YML="user-config.yml"
+          USER_LOOP=$(sudo losetup -f)
+          sudo losetup -P "$USER_LOOP" rr/rr.img
           sudo mkdir -p /mnt/p1
-          sudo mount "${user_loop}p1" /mnt/p1
-          cp -f /mnt/p1/user-config.yml "$usercfg" 2>/dev/null || true
+          sudo mount "${USER_LOOP}p1" /mnt/p1
+          cp -f /mnt/p1/user-config.yml "$USER_CONFIG_YML" 2>/dev/null || true
           sudo umount /mnt/p1 || true
-          sudo losetup --detach "$user_loop" || true
-          if [ "$(printf '%s\n' "${TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
+          sudo losetup --detach "$USER_LOOP" || true
+
+          # ── 选择引导镜像 ──────────────────────────────────────────
+          if [ "$(printf '%s' "${RR_TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
             GRUB_IMG="ainas/grub2.14.img.gz"
           else
             GRUB_IMG="ainas/grub2.12.img.gz"
           fi
-          echo "[DEBUG] selected grub image: ${GRUB_IMG} for rr tag=${TAG}"
+          echo "[INFO] rr tag=${RR_TAG} 选用的引导镜像=${GRUB_IMG}"
 
-          case "$SIZE" in
+          # ── 按目标大小 Repack 镜像 ────────────────────────────────
+          case "$IMAGE_SIZE" in
             2GB)
               gzip -dc "$GRUB_IMG" > rr/rr_2GB.img
               repack_rr_Img rr/rr.img rr/rr_2GB.img
@@ -403,58 +443,61 @@ jobs:
               mv -f rr/rr_2GB.img rr/rr.img
               ;;
             4GB)
-              echo "keep default 4GB image"
+              echo "[INFO] 保持默认 4GB 镜像"
               ;;
             *)
-              echo "unsupported size"
+              echo "[E] 不支持的镜像大小: $IMAGE_SIZE"
               exit 1
               ;;
           esac
-          echo "[DEBUG] final image size bytes: $(stat -c%s rr/rr.img)"
+          echo "[INFO] 最终镜像大小(字节): $(stat -c%s rr/rr.img)"
 
-          case "$FORMAT" in
+          # ── 导出并打包制品 ────────────────────────────────────────
+          case "$IMAGE_FORMAT" in
             img)
-              mv -f rr/rr.img "${artifact}.img"
-              [ "$usercfg" = "user-config.yml" ] || mv -f "$usercfg" "user-config.yml"
+              mv -f rr/rr.img "${ARTIFACT_NAME}.img"
+              [ "$USER_CONFIG_YML" = "user-config.yml" ] || mv -f "$USER_CONFIG_YML" "user-config.yml"
               ;;
             *)
-              echo "unsupported format"
+              echo "[E] 不支持的镜像格式: $IMAGE_FORMAT"
               exit 1
               ;;
           esac
 
           rm -f rr/rr.img rr/rr.base.img
 
-          zip_name="${artifact}.zip"
-          zip -qr "$zip_name" "${artifact}.img" user-config.yml
+          ARTIFACT_ZIP="${ARTIFACT_NAME}.zip"
+          zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
           if [ -d "ainas" ]; then
-            find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$zip_name" {} +
+            find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
           fi
 
-          echo "ARTIFACT=${artifact}" >> "$GITHUB_ENV"
-          echo "ARTIFACT_ZIP=$zip_name" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> "$GITHUB_ENV"
+          echo "ARTIFACT_ZIP=$ARTIFACT_ZIP" >> "$GITHUB_ENV"
 
-      - name: Publish zip to ainas2in1 release
+      - name: 发布制品到 ainas2in1 Release
         shell: bash
         env:
           ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
         run: |
           set -euo pipefail
-          : "${TAG:?missing TAG}"
-          : "${ARTIFACT_ZIP:?missing ARTIFACT_ZIP}"
-          : "${ACTION_TOKEN:?missing ACTION_TOKEN}"
+          : "${RR_TAG:?缺少 RR_TAG}"
+          : "${ARTIFACT_ZIP:?缺少 ARTIFACT_ZIP}"
+          : "${ACTION_TOKEN:?缺少 ACTION_TOKEN}"
 
           export GH_TOKEN="$ACTION_TOKEN"
           export GH_REPO="myp015/ainas2in1"
-          release_tag="rr-${TAG}"
+          RELEASE_TAG="rr-${RR_TAG}"
 
-          if ! gh release view "$release_tag" >/dev/null 2>&1; then
-            gh release create "$release_tag" \
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "[INFO] 发布标签 ${RELEASE_TAG} 不存在，正在创建"
+            gh release create "$RELEASE_TAG" \
               "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" \
-              --title "$release_tag" \
-              --notes "RR build artifacts for ${TAG}" \
+              --title "$RELEASE_TAG" \
+              --notes "RR build artifacts for ${RR_TAG}" \
               --latest=false
             exit 0
           fi
 
-          gh release upload "$release_tag" "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" --clobber
+          echo "[INFO] 正在向已有发布 ${RELEASE_TAG} 上传制品"
+          gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" --clobber
