@@ -672,40 +672,45 @@ jobs:
             echo "[INFO] 安装完成，正在抓取容器日志快照"
             docker logs --tail 200 dsm 2>&1 || true
 
-            # ── 等待重启后 Web 就绪 ───────────────────────────────
+         # ── 等待重启后 Web 就绪 ───────────────────────────────────
             REBOOT_OK=0
             for i in $(seq 1 60); do
-              if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
+                if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
                 echo "[E] dsm 容器已退出，启动失败"
                 break
-              fi
-              OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
-              if [ -n "$OUT" ]; then
-                echo "[INFO] 启动成功 (try=$i)，正在等待安装系统套件..."
+                fi
+                OUT=$(curl -sS --max-time 3 http://127.0.0.1:5000 2>/dev/null || true)
+                if [ -n "$OUT" ]; then
+                echo "[INFO] 安装成功 (try=$i)，正在等待系统重启并初始化..."
                 REBOOT_OK=1
                 break
-              fi
-              sleep 10
+                fi
+                sleep 10
             done
 
             if [ "$REBOOT_OK" != "1" ]; then
-              echo "[E] 重启后 Web 未就绪，启动失败"
-              docker logs --tail 200 dsm 2>&1 || true
-              exit 1
+                echo "[E] 重启后 Web 未就绪，启动失败"
+                docker logs --tail 200 dsm 2>&1 || true
+                exit 1
             fi
 
-            # ── 套件安装等待 ──────────────────────────────────────
-            WAIT_TOTAL=300; WAIT_STEP=5; ELAPSED=0; DOTS=""
-            while (( ELAPSED < WAIT_TOTAL )); do
-              DOTS+="."
-              printf "\033[K[INFO] 正在安装系统套件 %s (%ds/%ds)" "$DOTS" "$ELAPSED" "$WAIT_TOTAL"
-              if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
+          # ── 套件安装等待 ──────────────────────────────────────────
+            WAIT_TOTAL=300; WAIT_STEP=5; elapsed=0; dots=""
+            while (( elapsed < WAIT_TOTAL )); do
+                dots+="."
+
+                printf "\r\033[K[INFO] 安装系统套件 %s (%ds/%ds)" \
+                "$dots" "$elapsed" "$WAIT_TOTAL"
+
+                if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
                 printf "\n[E] dsm 容器已退出\n"
                 break
-              fi
-              sleep "$WAIT_STEP"
-              ELAPSED=$(( ELAPSED + WAIT_STEP ))
+                fi
+
+                sleep "$WAIT_STEP"
+                elapsed=$(( elapsed + WAIT_STEP ))
             done
+
             printf "\n"
 
             docker logs --tail 300 dsm 2>&1 || true
