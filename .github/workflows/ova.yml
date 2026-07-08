@@ -230,8 +230,8 @@ jobs:
             case "$line" in
               7.2.1) printf '7.2.1-69057-1'   ;;
               7.2.2) printf '7.2.2-72806-0'   ;;
-              7.3.0) printf '7.3.0-82510-0'   ;;
-              7.3.1) printf '7.3.1-84930-0'   ;;
+              7.3.0) printf '7.3.0-81180-0'   ;;
+              7.3.1) printf '7.3.1-86003-0'   ;;
               7.3.2) printf '7.3.2-86009-0'   ;;
               7.4.0)
                 python3 -m pip -q install --user openpyxl
