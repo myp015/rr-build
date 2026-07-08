@@ -225,7 +225,7 @@ jobs:
           WORKDIR="$PWD"
           AINAS2IN1_DIR="${WORKDIR}/.2in1"
           STAGE_HELPER="/tmp/2in1-helper"
-          PAT_XLSX_URL="https://github.com/RROrg/rr/raw/main/docs/pats.xlsx"
+          PAT_XLSX_URL="https://raw.githubusercontent.com/RROrg/rr/main/docs/pats.xlsx"
           PAT_XLSX="/tmp/pats.xlsx"
           DSM_INSTALL_DIR="/tmp/dsm-install"
           GRUB_MNT="/mnt/p1"
@@ -560,51 +560,16 @@ jobs:
             curl -fsSL --connect-timeout 15 "$PAT_XLSX_URL" -o "$PAT_XLSX"
 
             python3 -m pip -q install --user openpyxl
-          # 将 Python 脚本写入临时文件，彻底避免引号嵌套问题
-          cat << 'PYEOF' > /tmp/parse_pat.py
-          import os, re, openpyxl
-            
-          wb = openpyxl.load_workbook(os.environ["PAT_XLSX"], data_only=True)
-          ws = wb[wb.sheetnames[0]]
-          model = os.environ["MODEL"]
-          line_req = os.environ.get("DSM_LINE_REQ", "7.3.2")
-            
-          rows = [
-          (
-          ("" if r[0] is None else str(r[0]).strip()),
-          ("" if len(r) < 2 or r[1] is None else str(r[1]).strip()),
-          ("" if len(r) < 3 or r[2] is None else str(r[2]).strip()),
-          )
-          for r in ws.iter_rows(min_row=1, values_only=True)
-          ]
-          rows = [
-          t for t in rows
-          if t[0] and t[1] and t[2]
-          and not (t[0].lower() == "model" and t[1].lower().startswith("version"))
-          ]
-            
-          cand = [(v, u) for m, v, u in rows if m == model and v.startswith(line_req + "-")]
-          allm = [(v, u) for m, v, u in rows if m == model]
-          sel = cand if cand else allm
-            
-          if not sel:
-          raise SystemExit(f"未找到型号={model} 的 PAT 记录")
-            
-          best = sorted(sel, key=lambda x: [int(t) for t in re.findall(r\"\\d+\", x[0])], reverse=True)[0]
-          print(best[0] + "\t" + best[1])
-          PYEOF
-
-          PAT_LINE=$(PAT_XLSX="$PAT_XLSX" python3 /tmp/parse_pat.py)
+            PAT_LINE=$(python3 -c "import os,re,openpyxl;wb=openpyxl.load_workbook('/tmp/pats.xlsx',data_only=True);ws=wb[wb.sheetnames[0]];model=os.environ['MODEL'];line_req=os.environ.get('DSM_LINE_REQ','7.3.2');rows=[(('' if r[0] is None else str(r[0]).strip()),('' if len(r)<2 or r[1] is None else str(r[1]).strip()),('' if len(r)<3 or r[2] is None else str(r[2]).strip())) for r in ws.iter_rows(min_row=1,values_only=True)];rows=[t for t in rows if t[0] and t[1] and t[2] and not (t[0].lower()=='model' and t[1].lower().startswith('version'))];cand=[(v,u) for m,v,u in rows if m==model and v.startswith(line_req+'-')];allm=[(v,u) for m,v,u in rows if m==model];sel=cand if cand else allm;sel or (_ for _ in ()).throw(SystemExit(f'no pat found for model={model}'));best=sorted(sel,key=lambda x:[int(t) for t in re.findall(r'\\d+',x[0])],reverse=True)[0];print(best[0]+'\t'+best[1])")
             PAT_VERSION="${PAT_LINE%%$'\t'*}"
             PAT_URL="${PAT_LINE#*$'\t'}"
             [ -n "$PAT_VERSION" ] && [ -n "$PAT_URL" ] || { echo "[E] PAT 解析失败"; exit 1; }
             if [[ "$PAT_VERSION" != "${DSM_LINE_REQ}-"* ]]; then
-              echo "[E] PAT 版本不匹配: 期望=${DSM_LINE_REQ}, 实际=${PAT_VERSION}"
+              echo "[E] PAT 版本不匹配: req=${DSM_LINE_REQ}, got=${PAT_VERSION}"
               exit 1
             fi
-            echo "[INFO] 匹配到的 PAT 版本: $PAT_VERSION"
-            echo "[INFO] PAT 下载地址: $PAT_URL"
-
+            echo "[INFO] PAT_VERSION=$PAT_VERSION"
+            echo "[INFO] PAT_URL=$PAT_URL"
             VER_MAIN="${PAT_VERSION%%-*}"
             VER_MAIN_NODOT="${VER_MAIN//./}"
             VER_BUILD="${PAT_VERSION#*-}"
