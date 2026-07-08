@@ -165,13 +165,8 @@ jobs:
           fi
 
           echo "[INFO] 已选择型号: ${MODELS[*]}"
-          MODELS_JSON="["
-          for MODEL_ITEM in "${MODELS[@]}"; do
-            MODELS_JSON+=""$MODEL_ITEM","
-          done
-          MODELS_JSON="${MODELS_JSON%,}]"
+          MODELS_JSON=$(printf "%s\n" "${MODELS[@]}" | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")
           echo "models=$MODELS_JSON" >> "$GITHUB_OUTPUT"
-
   build:
     name: ${{ format('build ({0})', matrix.model) }}
     needs: [resolve-release, select-models]
