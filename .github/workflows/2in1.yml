@@ -471,7 +471,7 @@ jobs:
               writeConfigKey "addons.\"\${KEY}\"" "\${VAL}" "\${USER_CONFIG_FILE}"
             fi
 
-            readConfigMap "addons" "\${USER_CONFIG_FILE}" || true
+            readConfigMap "addons" "\${USER_CONFIG_FILE}" >/dev/null 2>&1 || true
 
             set +e
             menu.sh make

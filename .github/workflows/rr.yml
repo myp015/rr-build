@@ -344,7 +344,7 @@ jobs:
           echo "[DEBUG] model=${MODEL} force_nvmecache=\${FORCE_NVME_CACHE}"
 
           echo "[DEBUG] addons after custom write:"
-          readConfigMap "addons" "\${USER_CONFIG_FILE}" || true
+          readConfigMap "addons" "\${USER_CONFIG_FILE}" >/dev/null 2>&1 || true
 
           menu.sh make
 
