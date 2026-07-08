@@ -699,7 +699,7 @@ jobs:
             while (( elapsed < WAIT_TOTAL )); do
                 dots+="."
 
-                printf "\r\033[K[INFO] 安装系统套件 %s (%ds/%ds)" \
+                printf "\r\033[K[INFO] 正在安装系统套件 %s (%ds/%ds)" \
                 "$dots" "$elapsed" "$WAIT_TOTAL"
 
                 if ! docker ps --filter "name=^dsm$" --filter "status=running" -q | grep -q .; then
