@@ -15,7 +15,7 @@ on:
         options:
           - 自选
           - 全选
-        default: 自选
+        default: 全选
       model_ds918p:
         description: "DS918+"
         type: boolean
