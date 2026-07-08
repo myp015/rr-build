@@ -233,7 +233,11 @@ jobs:
               7.3.0) printf '7.3.0-82510-0'   ;;
               7.3.1) printf '7.3.1-84930-0'   ;;
               7.3.2) printf '7.3.2-86009-0'   ;;
-              7.4.0) printf '7.4.0-101188-0'  ;;
+              7.4.0)
+                python3 -m pip -q install --user openpyxl
+                DSM_VERSION_74=$(MODEL_NAME="${MODEL_NAME}" python3 -c "import os,re,urllib.request,openpyxl;url='https://raw.githubusercontent.com/RROrg/rr/main/docs/pats.xlsx';path='/tmp/pats.xlsx';urllib.request.urlretrieve(url,path);wb=openpyxl.load_workbook(path,data_only=True);ws=wb[wb.sheetnames[0]];model=os.environ['MODEL_NAME'];line_req='7.4.0';rows=[(('' if r[0] is None else str(r[0]).strip()),('' if len(r)<2 or r[1] is None else str(r[1]).strip()),('' if len(r)<3 or r[2] is None else str(r[2]).strip())) for r in ws.iter_rows(min_row=1,values_only=True)];rows=[t for t in rows if t[0] and t[1] and t[2] and not (t[0].lower()=='model' and t[1].lower().startswith('version'))];cand=[(v,u) for m,v,u in rows if m==model and v.startswith(line_req+'-')];allm=[(v,u) for m,v,u in rows if m==model];sel=cand if cand else allm;sel or (_ for _ in ()).throw(SystemExit(f'no pat found for model={model}'));best=sorted(sel,key=lambda x:[int(t) for t in re.findall(r'\d+',x[0])],reverse=True)[0];print(best[0])")
+                printf '%s' "$DSM_VERSION_74"
+                ;;
               *)
                 printf '[E] 不支持的 DSM 版本: %s' "$line"
                 return 1
