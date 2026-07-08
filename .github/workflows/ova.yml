@@ -337,9 +337,41 @@ jobs:
           sudo bash "$AINAS2IN1_DIR/script/replace_ainas_po_notice.sh"
           sudo AINAS2IN1_DIR="$AINAS2IN1_DIR" bash -c 'set -euo pipefail; . "${AINAS2IN1_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
 
-          echo "[INFO] 开始重新打包 initrd-rr"
+          echo "[INFO] 开始重新打包 initrd-rr(单线程+临时文件+逐环校验)"
+          NEW_INITRD="/tmp/initrd-rr.new"
+          sudo rm -f "$NEW_INITRD"
+
+          set +e
+          sudo find . | sudo cpio -o -H newc -R root:root 2>/tmp/cpio_o.err \
+            | sudo zstd -19 -T1 -f -o "$NEW_INITRD" -
+          PIPE_RC=("${PIPESTATUS[@]}")
+          set -e
+          for i in "${!PIPE_RC[@]}"; do
+            if [ "${PIPE_RC[$i]}" -ne 0 ]; then
+              echo "[E] initrd 重打包管道第 $i 环失败 (rc=${PIPE_RC[$i]})"
+              cat /tmp/cpio_o.err || true
+              exit 42
+            fi
+          done
+
+          if ! sudo zstd -t "$NEW_INITRD"; then
+            echo "[E] 新 initrd zstd 完整性校验失败"
+            exit 43
+          fi
+
+          OLD_SIZE=$(sudo stat -c%s "$SYSTEM_MNT/initrd-rr" 2>/dev/null || echo 0)
+          NEW_SIZE=$(sudo stat -c%s "$NEW_INITRD")
+          echo "[INFO] initrd 旧大小=${OLD_SIZE} 新大小=${NEW_SIZE}"
+          if [ "$NEW_SIZE" -lt 1048576 ]; then
+            echo "[E] 新 initrd 过小(疑似截断): ${NEW_SIZE}"
+            exit 44
+          fi
+
           sudo rm -f "$SYSTEM_MNT/initrd-rr"
-          sudo find . | sudo cpio -o -H newc -R root:root | sudo zstd -19 -T0 -f -c - | sudo tee "$SYSTEM_MNT/initrd-rr" >/dev/null
+          sudo cp -f "$NEW_INITRD" "$SYSTEM_MNT/initrd-rr"
+          sudo sync
+          echo "[INFO] initrd-rr 重打包并校验通过"
+
 
           cd "$WORKDIR"
           sudo umount "$SYSTEM_MNT" || true
