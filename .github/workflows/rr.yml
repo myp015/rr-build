@@ -418,7 +418,7 @@ jobs:
           sudo losetup --detach "$USER_LOOP" || true
 
           # ── 选择引导镜像 ──────────────────────────────────────────
-          if [ "$(printf '%s' "${RR_TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
+          if [ "$(printf '%s\n' "${RR_TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
             GRUB_IMG="ainas/grub2.14.img.gz"
           else
             GRUB_IMG="ainas/grub2.12.img.gz"
