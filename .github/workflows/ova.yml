@@ -671,13 +671,48 @@ jobs:
             exit 1
           fi
 
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" \
-              "${ASSETS[@]}" \
-              --title "$RELEASE_TAG" \
-              --notes "RR build artifacts for ${TAG}" \
-              --latest=false
-            exit 0
-          fi
+          ensure_release() {
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              return 0
+            fi
+            echo "[INFO] Release $RELEASE_TAG 不存在，正在创建..."
+            set +e
+            CREATE_OUT=$(gh release create "$RELEASE_TAG"               --title "$RELEASE_TAG"               --notes "RR build artifacts for ${TAG}"               --latest=false 2>&1)
+            CREATE_RC=$?
+            set -e
+            if [ "$CREATE_RC" -eq 0 ]; then
+              return 0
+            fi
+            echo "$CREATE_OUT"
+            if echo "$CREATE_OUT" | grep -qiE 'already exists|already_exists|Validation Failed'; then
+              echo "[INFO] Release 已被其他并发任务创建，继续上传"
+              gh release view "$RELEASE_TAG" >/dev/null
+              return 0
+            fi
+            return "$CREATE_RC"
+          }
 
-          gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
+          upload_assets() {
+            local ATTEMPT
+            for ATTEMPT in 1 2 3 4 5; do
+              ensure_release
+              echo "[INFO] 上传资产 attempt ${ATTEMPT}: ${ASSETS[*]}"
+              set +e
+              UPLOAD_OUT=$(gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber 2>&1)
+              UPLOAD_RC=$?
+              set -e
+              if [ "$UPLOAD_RC" -eq 0 ]; then
+                return 0
+              fi
+              echo "$UPLOAD_OUT"
+              if echo "$UPLOAD_OUT" | grep -qiE 'HTTP 404|HTTP 502|HTTP 503|HTTP 504|rate limit|secondary rate'; then
+                echo "[INFO] 上传暂时失败，${ATTEMPT}0s 后重试"
+                sleep "${ATTEMPT}0"
+                continue
+              fi
+              return "$UPLOAD_RC"
+            done
+            return 1
+          }
+
+          upload_assets

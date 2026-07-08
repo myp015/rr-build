@@ -448,7 +448,7 @@ jobs:
             writeConfigKey "addons" "{}" "\${USER_CONFIG_FILE}"
             FORCE_NVME_CACHE=0
             ADDONS_SEED="${ADDONS}"
-            echo "[INFO] ADDONS 种子=\${ADDONS_SEED}"
+            echo "[INFO] ADDONS插件=\${ADDONS_SEED}"
             IFS=',' read -ra ADDON_ARR <<< "\${ADDONS_SEED}"
             declare -A __SEEN_ADDON=()
             for A in "\${ADDON_ARR[@]}"; do
