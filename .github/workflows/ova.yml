@@ -483,6 +483,7 @@ jobs:
           echo "[INFO] 正在使用 ainas2in1 docker-compose 启动 DSM 安装容器"
           cp -f "$AINAS2IN1_DIR/docker/vm-docker-compose.yaml" "$WORKDIR/rr/docker-compose.yaml"
           sed -i 's/^\([[:space:]]*container_name:[[:space:]]*\).*/\1dsm/' "$WORKDIR/rr/docker-compose.yaml"
+          sed -i "s#file=/rr.img#file=/storage/alpine/rr.img#g" "$WORKDIR/rr/docker-compose.yaml"
           cd "$WORKDIR/rr"
           if [ ! -f "$WORKDIR/rr/rr.img" ]; then
             echo "[E] rr.img 不存在于 $WORKDIR/rr/rr.img"
