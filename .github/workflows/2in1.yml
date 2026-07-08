@@ -19,43 +19,43 @@ on:
       model_ds918p:
         description: "DS918+"
         type: boolean
-        default: true
+        default: false
       model_ds920p:
         description: "DS920+"
         type: boolean
-        default: true
+        default: false
       model_ds923p:
         description: "DS923+"
         type: boolean
-        default: true
+        default: false
       model_ds925p:
         description: "DS925+"
         type: boolean
-        default: true
+        default: false
       model_ds3622xsp:
         description: "DS3622xs+"
         type: boolean
-        default: true
+        default: false
       model_sa6400:
         description: "SA6400"
         type: boolean
-        default: true
+        default: false
       model_ds425p:
         description: "DS425+"
         type: boolean
-        default: true
+        default: false
       model_dva3221:
         description: "DVA3221"
         type: boolean
-        default: true
+        default: false
       model_dva1622:
         description: "DVA1622"
         type: boolean
-        default: true
+        default: false
       build_update_zip:
         description: "编译升级包（update_xxx.zip）"
         type: boolean
-        default: true
+        default: false
       rr_version:
         description: "RR version (可选，留空=latest；示例：26.4.0 或 v26.4.0)"
         type: string
