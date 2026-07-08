@@ -419,25 +419,37 @@ jobs:
             echo "[INFO] $CPUINFO_TGZ 不存在，跳过 cpuinfo 修补"
           fi
 
-          # ── initrd 修补与重打包 ────────────────────────────────────
-          sudo mkdir -p /tmp/initrd_work
-          cd /tmp/initrd_work
-          sudo zstd -dc "$SYSTEM_MNT/initrd-rr" | sudo cpio -idm
+          # ── initrd 修补与重打包（改用 2in1func.sh 的解包/重打包函数）──
+          . "$AINAS2IN1_DIR/script/2in1func.sh"
 
+          INITRD_SRC="$SYSTEM_MNT/initrd-rr"
+          INITRD_WORK="/tmp/initrd_work"
+          INITRD_NEW="/tmp/initrd-ainas.new"
+
+          echo "[INFO] 使用 unpackInitrd 解包 initrd-rr"
+          sudo rm -rf "$INITRD_WORK" "$INITRD_NEW"
+          sudo mkdir -p "$INITRD_WORK"
+          unpackInitrd "$INITRD_SRC" "$INITRD_WORK"
+
+          cd "$INITRD_WORK"
           if [ "$(printf '%s\n' "$TAG" "25.9.7" | sort -V | head -n1)" = "$TAG" ] && [ "$TAG" != "25.9.7" ]; then
             sudo bash "$AINAS2IN1_DIR/script/2in1_ram_patch-25_3_3.sh"
-            sudo cp -f "$AINAS2IN1_DIR/script/.bashrc" "/tmp/initrd_work/root/.bashrc"
+            sudo cp -f "$AINAS2IN1_DIR/script/.bashrc" "$INITRD_WORK/root/.bashrc"
           else
             sudo bash "$AINAS2IN1_DIR/script/2in1_ram_patch-26_3_3.sh"
           fi
-
-          echo "[INFO] 开始重新打包 initrd-rr"
-          sudo find . | sudo cpio -o -H newc -R root:root | sudo zstd -19 -T0 -f -c - | sudo tee "$SYSTEM_MNT/initrd-ainas" >/dev/null
-          sudo rm -f "$SYSTEM_MNT/initrd-rr"
-
           cd "$WORKDIR"
+
+          echo "[INFO] 使用 repackInitrd 重新打包为 initrd-ainas"
+          repackInitrd "$INITRD_SRC" "$INITRD_WORK" "$INITRD_NEW"
+          sudo cp -f "$INITRD_NEW" "$SYSTEM_MNT/initrd-ainas"
+          sudo rm -f "$INITRD_SRC"
+          sudo rm -f "$INITRD_NEW"
+          sudo sync
+
           sudo umount "$SYSTEM_MNT" || true
           sudo rm -rf "$SYSTEM_MNT"
+
 
           # ── 使用 RR Docker 编译镜像（非 UPDATE 模式）─────────────
           if [ "${UPDATE_ONLY}" != "true" ]; then

@@ -325,23 +325,35 @@ jobs:
             echo "[INFO] $CPUINFO_TGZ 不存在，跳过 cpuinfo 修补"
           fi
 
-          # ── initrd 修补与重打包 ───────────────────────────────────
-          sudo mkdir -p /tmp/initrd_work
-          cd /tmp/initrd_work
-          sudo zstd -dc "$SYSTEM_MNT/initrd-rr" | sudo cpio -idm
+          # ── initrd 修补与重打包（改用 2in1func.sh 的解包/重打包函数）──
+          . "$AINAS2IN1_DIR/script/2in1func.sh"
 
-          sudo bash "$AINAS_DIR/script/replace_ainas_po_notice.sh"
-          sudo AINAS_DIR="$AINAS_DIR" bash -c 'set -euo pipefail; . "${AINAS_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
+          INITRD_SRC="$SYSTEM_MNT/initrd-rr"
+          INITRD_WORK="/tmp/initrd_work"
+          INITRD_NEW="/tmp/initrd-rr.new"
 
-          echo "[INFO] 开始重新打包 initrd-rr"
-          sudo rm -f "$SYSTEM_MNT/initrd-rr"
-          sudo find . | sudo cpio -o -H newc -R root:root | sudo zstd -19 -T0 -f -c - | sudo tee "$SYSTEM_MNT/initrd-rr" >/dev/null
+          echo "[INFO] 使用 unpackInitrd 解包 initrd-rr"
+          sudo rm -rf "$INITRD_WORK" "$INITRD_NEW"
+          sudo mkdir -p "$INITRD_WORK"
+          unpackInitrd "$INITRD_SRC" "$INITRD_WORK"
 
-          cd "$WORK_DIR"
+          cd "$INITRD_WORK"
+          sudo bash "$AINAS2IN1_DIR/script/replace_ainas_po_notice.sh"
+          sudo AINAS2IN1_DIR="$AINAS2IN1_DIR" bash -c 'set -euo pipefail; . "${AINAS2IN1_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
+          cd "$WORKDIR"
+
+          echo "[INFO] 使用 repackInitrd 重新打包 initrd-rr"
+          repackInitrd "$INITRD_SRC" "$INITRD_WORK" "$INITRD_NEW"
+          sudo cp -f "$INITRD_NEW" "$INITRD_SRC"
+          sudo sync
+          sudo rm -rf "$INITRD_WORK" "$INITRD_NEW"
+
+
           sudo umount "$SYSTEM_MNT" || true
           sudo rm -rf "$SYSTEM_MNT"
+          
 
-          # ── 生成容器内构建脚本（变量通过 docker -e 注入，避免 sed 替换）──
+          # ── 使用 RR Docker 编译镜像 ───────────────────────────────
           cat > build.sh <<'EOF'
           set -eo pipefail
           . menu.sh
