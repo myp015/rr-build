@@ -614,7 +614,7 @@ jobs:
 
           docker logs --tail 300 dsm 2>&1 || true
 
-          echo "[INFO] 启动成功，正在停止并删除容器"
+          echo "[INFO] DSM安装成功，正在停止并删除容器"
           cd "$WORKDIR/rr"
           docker compose -f docker-compose.yaml down -v || true
 
