@@ -655,6 +655,53 @@ jobs:
           echo "ARTIFACT=${ARTIFACT}"    >> "$GITHUB_ENV"
           echo "ARTIFACT_ZIP=$ZIP_NAME"  >> "$GITHUB_ENV"
 
+
+      - name: 安装失败时收尾并上传 rr.img
+        if: failure()
+        shell: bash
+        env:
+          MODEL: ${{ matrix.model }}
+        run: |
+          set -uo pipefail   # 注意：这里不加 -e，收尾步骤要尽量把能做的都做完
+
+          WORKDIR="$PWD"
+
+          # ① 先停掉可能仍在运行、占用 rr.img 的 dsm 容器
+          if [ -f "$WORKDIR/rr/docker-compose.yaml" ]; then
+            ( cd "$WORKDIR/rr" && docker compose -f docker-compose.yaml down -v ) || true
+          fi
+          docker rm -f dsm >/dev/null 2>&1 || true
+
+          # ② 卸载可能残留的挂载点，摘除 loop 设备，避免读到不一致镜像
+          sudo umount /mnt/p1 /mnt/p3 2>/dev/null || true
+          for L in $(losetup -j "$WORKDIR/rr/rr.img" 2>/dev/null | cut -d: -f1); do
+            sudo losetup --detach "$L" || true
+          done
+          sudo sync
+
+          # ③ 确认成品镜像存在后再压缩
+          if [ ! -f "$WORKDIR/rr/rr.img" ]; then
+            echo "[E] rr/rr.img 不存在，可能失败在编译更早阶段，跳过上传"
+            exit 0
+          fi
+          echo "[INFO] rr.img 大小: $(stat -c%s "$WORKDIR/rr/rr.img") 字节"
+
+          OUT="$WORKDIR/rr/rr-failed-${MODEL}.img.gz"
+          gzip -1 -c "$WORKDIR/rr/rr.img" > "$OUT"
+          ls -lh "$OUT"
+          echo "DEBUG_IMG=$OUT" >> "$GITHUB_ENV"
+
+      - name: 上传失败调试镜像到 Actions 制品区
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rr-img-failed-${{ matrix.model }}
+          path: rr/rr-failed-${{ matrix.model }}.img.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+
+
       - name: 发布制品到 ainas2in1 Release
         shell: bash
         env:
