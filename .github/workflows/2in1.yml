@@ -198,7 +198,6 @@ jobs:
     env:
       FORMAT: vmdk
       LANGUAGE: zh_CN
-      DSM_VERSION: ${{ inputs.dsm_version }}
       KERNEL: official
       ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools,resizepart
       ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
@@ -264,7 +263,7 @@ jobs:
           fi
 
           # ── 版本映射 ───────────────────────────────────────────────
-          pick_target_dsm_version() {
+          pick_dsm_version() {
             local line="$1"
             case "$line" in
               7.2.1) printf '7.2.1-69057-1'   ;;
@@ -291,20 +290,20 @@ jobs:
             DSM_LINE_REQ="7.2.2"
           fi
 
-          TARGET_DSM_VERSION="$(pick_target_dsm_version "${DSM_LINE_REQ}")"
+          DSM_VERSION="$(pick_dsm_version "${DSM_LINE_REQ}")"
           DSM_LINE_SHORT="${DSM_LINE_REQ%.*}"
           export DSM_LINE_SHORT
 
-          VER_MAIN="${TARGET_DSM_VERSION%%-*}"
+          VER_MAIN="${DSM_VERSION%%-*}"
           VER_MAIN_NODOT="${VER_MAIN//./}"
-          VER_BUILD="${TARGET_DSM_VERSION#*-}"
+          VER_BUILD="${DSM_VERSION#*-}"
           VER_BUILD="${VER_BUILD%%-*}"
           ARTIFACT_VERSION="${VER_MAIN_NODOT}_${VER_BUILD}"
           SAFE_TAG="${TAG//./_}"
           echo "SAFE_TAG=${SAFE_TAG}" >> "$GITHUB_ENV"
 
           ARTIFACT="${MODEL}_${ARTIFACT_VERSION}_15g_Ainas2in1_${SAFE_TAG}"
-          echo "[INFO] 型号=${MODEL} 目标DSM版本=${TARGET_DSM_VERSION} DSM系列=${DSM_LINE_REQ} 制品版本=${ARTIFACT_VERSION}"
+          echo "[INFO] 型号=${MODEL} 目标DSM版本=${DSM_VERSION} DSM系列=${DSM_LINE_REQ} 制品版本=${ARTIFACT_VERSION}"
 
           # ── 系统依赖 ───────────────────────────────────────────────
           sudo apt-get update
@@ -472,8 +471,8 @@ jobs:
             cat > build.sh <<'EOF2'
             set -eo pipefail
             . menu.sh
-            TARGET_DSM_VERSION="${TARGET_DSM_VERSION}"
-            echo "[INFO] 型号=${MODEL} 目标DSM版本=\${TARGET_DSM_VERSION}"
+            DSM_VERSION="${DSM_VERSION}"
+            echo "[INFO] 型号=${MODEL} 目标DSM版本=\${DSM_VERSION}"
             menu.sh modelMenu "${MODEL}"
 
             LOCALE_FILE="$(dirname "${USER_CONFIG_FILE}")/.locale"
@@ -513,7 +512,7 @@ jobs:
             RETRY_SLEEP="${RETRY_SLEEP:-20}"
 
             fetch_and_make() {
-              menu.sh productversMenu "${TARGET_DSM_VERSION}"
+              menu.sh productversMenu "${DSM_VERSION}"
 
               PAT_URL="$(readConfigKey "paturl" "${USER_CONFIG_FILE}" 2>/dev/null || echo '')"
               if [ -z "${PAT_URL}" ] || [ "${PAT_URL}" = "null" ] || [ "${PAT_URL}" = '""' ]; then
@@ -558,7 +557,7 @@ jobs:
 
             sed -i \
               -e "s|\${MODEL}|${MODEL}|g" \
-              -e "s|\${TARGET_DSM_VERSION}|${TARGET_DSM_VERSION}|g" \
+              -e "s|\${DSM_VERSION}|${DSM_VERSION}|g" \
               -e "s|\${LANGUAGE}|${LANGUAGE}|g" \
               -e "s|\${ADDONS}|${ADDONS}|g" \
             build.sh
