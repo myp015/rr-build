@@ -556,7 +556,12 @@ jobs:
             menu.sh cleanCache
           EOF2
 
-
+            sed -i \
+              -e "s|\${MODEL}|${MODEL}|g" \
+              -e "s|\${TARGET_DSM_VERSION}|${TARGET_DSM_VERSION}|g" \
+              -e "s|\${LANGUAGE}|${LANGUAGE}|g" \
+              -e "s|\${ADDONS}|${ADDONS}|g" \
+            build.sh
             chmod +x build.sh
 
             rm -rf "$STAGE_HELPER"
