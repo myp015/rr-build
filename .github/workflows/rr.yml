@@ -201,7 +201,7 @@ jobs:
       ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
       RR_ASSET_URL: ${{ needs.resolve-release.outputs.rr_asset_url }}
       RR_TAG: ${{ needs.resolve-release.outputs.rr_tag }}
-      MODEL_NAME: ${{ matrix.model }}
+      MODEL: ${{ matrix.model }}
       DSM_LINE: ${{ inputs.dsm_version }}
     steps:
       - name: Checkout main repo
@@ -254,7 +254,7 @@ jobs:
               7.3.2) printf '7.3.2-86009-0'   ;;
               7.4.0)
                 python3 -m pip -q install --user openpyxl
-                DSM_VERSION_74=$(MODEL_NAME="${MODEL_NAME}" python3 -c "import os,re,urllib.request,openpyxl;url='https://raw.githubusercontent.com/RROrg/rr/main/docs/pats.xlsx';path='/tmp/pats.xlsx';urllib.request.urlretrieve(url,path);wb=openpyxl.load_workbook(path,data_only=True);ws=wb[wb.sheetnames[0]];model=os.environ['MODEL_NAME'];line_req='7.4.0';rows=[(('' if r[0] is None else str(r[0]).strip()),('' if len(r)<2 or r[1] is None else str(r[1]).strip()),('' if len(r)<3 or r[2] is None else str(r[2]).strip())) for r in ws.iter_rows(min_row=1,values_only=True)];rows=[t for t in rows if t[0] and t[1] and t[2] and not (t[0].lower()=='model' and t[1].lower().startswith('version'))];cand=[(v,u) for m,v,u in rows if m==model and v.startswith(line_req+'-')];allm=[(v,u) for m,v,u in rows if m==model];sel=cand if cand else allm;sel or (_ for _ in ()).throw(SystemExit(f'no pat found for model={model}'));best=sorted(sel,key=lambda x:[int(t) for t in re.findall(r'\d+',x[0])],reverse=True)[0];print(best[0])")
+                DSM_VERSION_74=$(MODEL="${MODEL}" python3 -c "import os,re,urllib.request,openpyxl;url='https://raw.githubusercontent.com/RROrg/rr/main/docs/pats.xlsx';path='/tmp/pats.xlsx';urllib.request.urlretrieve(url,path);wb=openpyxl.load_workbook(path,data_only=True);ws=wb[wb.sheetnames[0]];model=os.environ['MODEL'];line_req='7.4.0';rows=[(('' if r[0] is None else str(r[0]).strip()),('' if len(r)<2 or r[1] is None else str(r[1]).strip()),('' if len(r)<3 or r[2] is None else str(r[2]).strip())) for r in ws.iter_rows(min_row=1,values_only=True)];rows=[t for t in rows if t[0] and t[1] and t[2] and not (t[0].lower()=='model' and t[1].lower().startswith('version'))];cand=[(v,u) for m,v,u in rows if m==model and v.startswith(line_req+'-')];allm=[(v,u) for m,v,u in rows if m==model];sel=cand if cand else allm;sel or (_ for _ in ()).throw(SystemExit(f'no pat found for model={model}'));best=sorted(sel,key=lambda x:[int(t) for t in re.findall(r'\d+',x[0])],reverse=True)[0];print(best[0])")
                 printf '%s' "$DSM_VERSION_74"
                 ;;
               *)
@@ -265,8 +265,8 @@ jobs:
           }
 
           DSM_LINE_REQ="${DSM_LINE:-7.2.1}"
-          if echo "${MODEL_NAME}" | grep -Eq '^(DS925\+|DS425\+)$' && [ "${DSM_LINE_REQ}" = "7.2.1" ]; then
-            echo "[INFO] ${MODEL_NAME} 不支持 DSM 7.2.1，自动切换到 7.2.2"
+          if echo "${MODEL}" | grep -Eq '^(DS925\+|DS425\+)$' && [ "${DSM_LINE_REQ}" = "7.2.1" ]; then
+            echo "[INFO] ${MODEL} 不支持 DSM 7.2.1，自动切换到 7.2.2"
             DSM_LINE_REQ="7.2.2"
           fi
 
@@ -275,8 +275,8 @@ jobs:
           DSM_VERSION_BUILD="${DSM_VERSION#*-}"
           DSM_VERSION_BUILD="${DSM_VERSION_BUILD%%-*}"
           DSM_VERSION_SLUG="${DSM_VERSION_MAIN//./}_${DSM_VERSION_BUILD}"
-          ARTIFACT_NAME="${MODEL_NAME}_${DSM_VERSION_SLUG}_rr"
-          echo "[INFO] 型号=${MODEL_NAME} 目标DSM版本=${DSM_VERSION} DSM系列=${DSM_LINE_REQ} 版本slug=${DSM_VERSION_SLUG}"
+          ARTIFACT_NAME="${MODEL}_${DSM_VERSION_SLUG}_rr"
+          echo "[INFO] 型号=${MODEL} 目标DSM版本=${DSM_VERSION} DSM系列=${DSM_LINE_REQ} 版本slug=${DSM_VERSION_SLUG}"
 
           # ── 系统依赖 ──────────────────────────────────────────────
           echo "[INFO] 正在安装构建依赖"
@@ -292,7 +292,7 @@ jobs:
 
           sudo mount -o rw "${GRUB_LOOP}p1" "$GRUB_MNT"
           echo "[INFO] 开始修补 grub.cfg"
-          sudo env MODEL_ENV="$MODEL_NAME" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
+          sudo env MODEL_ENV="$MODEL" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
           echo "[INFO] grub.cfg 修补成功"
           sudo umount "$GRUB_MNT" || true
           sudo losetup --detach "$GRUB_LOOP" || true
@@ -373,47 +373,68 @@ jobs:
           cat > build.sh <<'EOF'
           set -eo pipefail
           . menu.sh
-          echo "[INFO] 型号=${MODEL_NAME} 目标DSM版本=${DSM_VERSION}"
-          menu.sh modelMenu "${MODEL_NAME}"
-          menu.sh productversMenu "${DSM_VERSION}"
-          LOCALE_FILE="$(dirname "${USER_CONFIG_FILE}")/.locale"
-          echo "${BUILD_LANGUAGE}.UTF-8" >"${LOCALE_FILE}"
-          echo "[INFO] locale 文件内容: $(cat "${LOCALE_FILE}" 2>/dev/null || echo 缺失)"
+          echo "[INFO] 型号=${MODEL} 目标DSM版本=${DSM_VERSION}"
+          menu.sh modelMenu "${MODEL}"
 
-          writeConfigKey "addons" "{}" "${USER_CONFIG_FILE}"
-          FORCE_NVME_CACHE=0
-          ADDONS_SEED="${BUILD_ADDONS}"
-          echo "[INFO] ADDONS插件=${ADDONS_SEED}"
-          IFS=',' read -ra ADDON_ARR <<< "${ADDONS_SEED}"
-          declare -A __SEEN_ADDON=()
-          for A in "${ADDON_ARR[@]}"; do
-            if echo "${A}" | grep -q ':'; then
-              ADDON_KEY="$(echo "${A}" | cut -d':' -f1 | xargs)"
-              ADDON_VAL="$(echo "${A}" | cut -d':' -f2- | xargs)"
-            else
-              ADDON_KEY="$(echo "${A}" | xargs)"
-              ADDON_VAL=""
+          # ── 联网获取 pat + 编译，带重试 ──────────────────────────
+          MAX_RETRY="${MAX_RETRY:-5}"
+          RETRY_SLEEP="${RETRY_SLEEP:-20}"
+
+          fetch_and_build() {
+            # 重新选择版本（此步会联网拉取 pat）
+            menu.sh productversMenu "${DSM_VERSION}"
+
+            # 校验 pat url 是否为空：为空说明联网失败，返回特定码 7
+            PAT_URL="$(readConfigKey "paturl" "${USER_CONFIG_FILE}" 2>/dev/null || echo '')"
+            if [ -z "${PAT_URL}" ] || [ "${PAT_URL}" = "null" ]; then
+              echo "[WARN] pat url 为空，判定为联网失败"
+              return 7
             fi
-            [ -z "${ADDON_KEY}" ] && continue
-            [ -n "${__SEEN_ADDON[${ADDON_KEY}]}" ] && continue
-            __SEEN_ADDON[${ADDON_KEY}]=1
-            writeConfigKey "addons.${ADDON_KEY}" "${ADDON_VAL}" "${USER_CONFIG_FILE}"
+            echo "[INFO] 已获取 pat url: ${PAT_URL}"
+
+            LOCALE_FILE="$(dirname "${USER_CONFIG_FILE}")/.locale"
+            echo "${BUILD_LANGUAGE}.UTF-8" >"${LOCALE_FILE}"
+
+            writeConfigKey "addons" "{}" "${USER_CONFIG_FILE}"
+            ADDONS_SEED="${BUILD_ADDONS}"
+            IFS=',' read -ra ADDON_ARR <<< "${ADDONS_SEED}"
+            declare -A __SEEN_ADDON=()
+            for A in "${ADDON_ARR[@]}"; do
+              ADDON_KEY="$(echo "${A}" | cut -d':' -f1 | xargs)"
+              [ -z "${ADDON_KEY}" ] && continue
+              [ -n "${__SEEN_ADDON[${ADDON_KEY}]}" ] && continue
+              __SEEN_ADDON[${ADDON_KEY}]=1
+              writeConfigKey "addons.${ADDON_KEY}" "" "${USER_CONFIG_FILE}"
+            done
+
+            menu.sh make
+          }
+
+          RC=0
+          for i in $(seq 1 "${MAX_RETRY}"); do
+            echo "[INFO] 第 ${i}/${MAX_RETRY} 次尝试编译"
+            if fetch_and_build; then
+              RC=0; break
+            else
+              RC=$?
+              echo "[WARN] 第 ${i} 次编译失败 (rc=${RC})"
+              # 只对联网类错误(7)重试，其它错误直接退出
+              if [ "${RC}" != "7" ]; then
+                echo "[E] 非联网错误，停止重试"; break
+              fi
+              menu.sh cleanCache || true
+              [ "${i}" -lt "${MAX_RETRY}" ] && { echo "[INFO] ${RETRY_SLEEP}s 后重试"; sleep "${RETRY_SLEEP}"; }
+            fi
           done
-          if echo "${MODEL_NAME}" | grep -Eq '^(DS918\+|DS1019\+|DS1621xs\+|RS1619xs)$'; then
-            FORCE_NVME_CACHE=1
-            ADDON_KEY="nvmecache"
-            ADDON_VAL=""
-            writeConfigKey "addons.${ADDON_KEY}" "${ADDON_VAL}" "${USER_CONFIG_FILE}"
+
+          if [ "${RC}" != "0" ]; then
+            echo "[E] 达到最大重试次数仍失败，rc=${RC}"; exit "${RC}"
           fi
-          echo "[INFO] 型号=${MODEL_NAME} 强制启用 nvmecache=${FORCE_NVME_CACHE}"
-
-          readConfigMap "addons" "${USER_CONFIG_FILE}" >/dev/null 2>&1 || true
-
-          menu.sh make
 
           rm -rf /mnt/p3/ssh || true
           menu.sh cleanCache
           EOF
+          
           chmod +x build.sh
 
           RR_IMAGE_TAG="$RR_TAG"
@@ -423,7 +444,7 @@ jobs:
           echo "[INFO] RR Docker 镜像标签=${RR_IMAGE_TAG}"
           docker pull "wjz304/rr:${RR_IMAGE_TAG}"
           docker run --rm --privileged \
-            -e MODEL_NAME="${MODEL_NAME}" \
+            -e MODEL="${MODEL}" \
             -e DSM_VERSION="${DSM_VERSION}" \
             -e BUILD_LANGUAGE="${BUILD_LANGUAGE}" \
             -e BUILD_ADDONS="${BUILD_ADDONS}" \

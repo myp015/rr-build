@@ -475,7 +475,7 @@ jobs:
             TARGET_DSM_VERSION="${TARGET_DSM_VERSION}"
             echo "[INFO] 型号=${MODEL} 目标DSM版本=\${TARGET_DSM_VERSION}"
             menu.sh modelMenu "${MODEL}"
-            menu.sh productversMenu "\${TARGET_DSM_VERSION}"
+
             LOCALE_FILE="\$(dirname "\${USER_CONFIG_FILE}")/.locale"
             echo "${LANGUAGE}.UTF-8" >"\${LOCALE_FILE}"
             echo "[INFO] locale 文件内容: \$(cat "\${LOCALE_FILE}" 2>/dev/null || echo 缺失)"
@@ -508,19 +508,54 @@ jobs:
 
             readConfigMap "addons" "\${USER_CONFIG_FILE}" >/dev/null 2>&1 || true
 
-            set +e
-            menu.sh make
-            MAKE_RC=\$?
-            set -e
-            if [ "\${MAKE_RC}" -ne 0 ]; then
-              echo "[E] menu.sh make 失败 (rc=\${MAKE_RC})"
+            # ── 选择版本(联网拉 pat) + 编译，带重试 ───────────────────
+            MAX_RETRY="\${MAX_RETRY:-5}"
+            RETRY_SLEEP="\${RETRY_SLEEP:-20}"
+
+            fetch_and_make() {
+              menu.sh productversMenu "\${TARGET_DSM_VERSION}"
+
+              PAT_URL="\$(readConfigKey "paturl" "\${USER_CONFIG_FILE}" 2>/dev/null || echo '')"
+              if [ -z "\${PAT_URL}" ] || [ "\${PAT_URL}" = "null" ] || [ "\${PAT_URL}" = '""' ]; then
+                echo "[WARN] paturl 为空，判定为联网失败"
+                return 7
+              fi
+              echo "[INFO] 已获取 paturl: \${PAT_URL}"
+
+              set +e
+              menu.sh make
+              local rc=\$?
+              set -e
+              return "\${rc}"
+            }
+
+            RC=0
+            for i in \$(seq 1 "\${MAX_RETRY}"); do
+              echo "[INFO] 第 \${i}/\${MAX_RETRY} 次尝试(选版本+编译)"
+              fetch_and_make
+              RC=\$?
+              if [ "\${RC}" -eq 0 ]; then
+                echo "[INFO] 编译成功"; break
+              fi
+              echo "[WARN] 第 \${i} 次失败 (rc=\${RC})"
               [ -f "\${LOG_FILE}" ] && cat "\${LOG_FILE}" || true
-              exit "\${MAKE_RC}"
+              if [ "\${RC}" -ne 7 ]; then
+                echo "[E] 非联网错误，停止重试"; break
+              fi
+              menu.sh cleanCache || true
+              [ "\${i}" -lt "\${MAX_RETRY}" ] && { echo "[INFO] \${RETRY_SLEEP}s 后重试"; sleep "\${RETRY_SLEEP}"; }
+            done
+
+            if [ "\${RC}" -ne 0 ]; then
+              echo "[E] menu.sh make 最终失败 (rc=\${RC})"
+              [ -f "\${LOG_FILE}" ] && cat "\${LOG_FILE}" || true
+              exit "\${RC}"
             fi
 
             rm -rf /mnt/p3/ssh || true
             menu.sh cleanCache
-          EOF2
+            EOF2
+
 
             chmod +x build.sh
 
