@@ -554,7 +554,7 @@ jobs:
 
             rm -rf /mnt/p3/ssh || true
             menu.sh cleanCache
-            EOF2
+           EOF2
 
 
             chmod +x build.sh
