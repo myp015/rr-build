@@ -52,6 +52,10 @@ on:
         description: "DVA1622"
         type: boolean
         default: false
+      custom_models:
+        description: "自定义型号(工作流未列出的,多个用逗号分隔,如 DS1621+,RS4021xs+)"
+        type: string
+        default: ""      
       image_size:
         description: "Image size"
         type: choice
@@ -147,7 +151,19 @@ jobs:
             [ "${{ inputs.model_dva3221 }}"   = "true" ] && MODELS+=("DVA3221")
             [ "${{ inputs.model_dva1622 }}"   = "true" ] && MODELS+=("DVA1622")
           fi
-
+          
+          # 追加自定义型号（工作流未列出的型号）
+          CUSTOM_RAW="${{ inputs.custom_models }}"
+          if [ -n "$(printf '%s' "$CUSTOM_RAW" | tr -d '[:space:]')" ]; then
+            echo "[INFO] 检测到自定义型号输入: ${CUSTOM_RAW}"
+            IFS=',' read -ra CUSTOM_ARR <<< "$CUSTOM_RAW"
+            for cm in "${CUSTOM_ARR[@]}"; do
+              cm="$(echo "$cm" | xargs)"
+              [ -n "$cm" ] && MODELS+=("$cm")
+            done
+          fi
+          
+          
           # 去重
           UNIQ_MODELS=()
           for MODEL_ITEM in "${MODELS[@]}"; do
