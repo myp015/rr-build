@@ -424,9 +424,17 @@ jobs:
             echo "[INFO] 已获取 paturl: ${PAT_URL}"
 
             set +e
-            menu.sh make
-            local rc=$?
+            # 用 PIPESTATUS 取 make 的真实退出码，而不是 tee 的
+            menu.sh make 2>&1 | tee /tmp/make.log
+            local rc=${PIPESTATUS[0]}
             set -e
+
+            # 关键：扫描 dialog 弹窗式错误（退出码可能是 0，必须靠日志判定）
+            if grep -Eq 'ramdisk patch 失败|installAddon: .*addon not found|patch 失败|ERROR:' /tmp/make.log; then
+              echo "[E] 检测到编译错误（ramdisk/addon patch 失败）"
+              return 1
+            fi
+
             return "${rc}"
           }
 
