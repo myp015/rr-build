@@ -238,8 +238,8 @@ jobs:
           set -euo pipefail
 
           # ── 目录与常量 ────────────────────────────────────────────
-          WORK_DIR="$PWD"
-          AINAS_DIR="${WORK_DIR}/.2in1"
+          WORKDIR="$PWD"
+          AINAS2IN1_DIR="${WORKDIR}/.2in1"
           GRUB_MNT="/mnt/p1"
           SYSTEM_MNT="/mnt/p3"
 
@@ -292,7 +292,7 @@ jobs:
 
           sudo mount -o rw "${GRUB_LOOP}p1" "$GRUB_MNT"
           echo "[INFO] 开始修补 grub.cfg"
-          sudo env MODEL_ENV="$MODEL_NAME" python3 "$AINAS_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
+          sudo env MODEL_ENV="$MODEL_NAME" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
           echo "[INFO] grub.cfg 修补成功"
           sudo umount "$GRUB_MNT" || true
           sudo losetup --detach "$GRUB_LOOP" || true
@@ -326,7 +326,7 @@ jobs:
             fi
 
             if [ -n "$CPUINFO_PATCH_TARGET" ]; then
-              python3 "$AINAS_DIR/script/patch-cpuinfo.py" "$CPUINFO_PATCH_TARGET"
+              python3 "$AINAS2IN1_DIR/script/patch-cpuinfo.py" "$CPUINFO_PATCH_TARGET"
               if [ "$CPUINFO_REPACK_MODE" = "inner-tar" ]; then
                 (cd "$CPUINFO_WORK/rootfs"  && sudo tar -cf "$CPUINFO_WORK/extract/all.tar" .)
                 (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
@@ -439,7 +439,7 @@ jobs:
           sudo losetup --detach "$DISK_LOOP"
 
           # ── 提取 user-config.yml ──────────────────────────────────
-          . "$AINAS_DIR/script/2in1func.sh"
+          . "$AINAS2IN1_DIR/script/2in1func.sh"
           USER_CONFIG_YML="user-config.yml"
           USER_LOOP=$(sudo losetup -f)
           sudo losetup -P "$USER_LOOP" rr/rr.img
