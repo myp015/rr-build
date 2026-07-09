@@ -476,10 +476,6 @@ jobs:
           echo "[INFO] RR Docker 镜像标签=${RR_IMAGE_TAG}"
           docker pull "wjz304/rr:${RR_IMAGE_TAG}"
           docker run --rm --privileged \
-            -e MODEL="${MODEL}" \
-            -e DSM_VERSION="${DSM_VERSION}" \
-            -e LANGUAGE="${LANGUAGE}" \
-            -e ADDONS="${ADDONS}" \
             -v "$PWD/build.sh:/opt/rr/build.sh" \
             -v "$PWD:$PWD" -w "$PWD" \
             "wjz304/rr:${RR_IMAGE_TAG}" bash /opt/rr/build.sh
