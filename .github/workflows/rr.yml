@@ -270,7 +270,7 @@ jobs:
             DSM_LINE_REQ="7.2.2"
           fi
 
-          DSM_VERSION="$(pick_DSM_VERSION "${DSM_LINE_REQ}")"
+          DSM_VERSION="$(pick_dsm_version "${DSM_LINE_REQ}")"
           DSM_VERSION_MAIN="${DSM_VERSION%%-*}"
           DSM_VERSION_BUILD="${DSM_VERSION#*-}"
           DSM_VERSION_BUILD="${DSM_VERSION_BUILD%%-*}"
