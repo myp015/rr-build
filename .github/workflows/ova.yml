@@ -508,8 +508,8 @@ jobs:
           echo "[INFO] 已为当前 rr 标签选择引导镜像: ${GRUB_IMG}"
 
           gzip -dc "$GRUB_IMG" > rr/rr_2GB.img
+          resizeImg rr/rr_2GB.img +1024M
           repack_rr_Img rr/rr.img rr/rr_2GB.img
-          resizeImg rr/rr_2GB.img +512M
           rm -f rr/rr.img
           mv -f rr/rr_2GB.img rr/rr.img
           echo "[INFO] 最终打包完成的镜像大小: $(stat -c%s rr/rr.img) 字节"
