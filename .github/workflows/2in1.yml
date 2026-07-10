@@ -595,12 +595,7 @@ jobs:
           fi
           
           
-          # ── 编译完成后立刻清理 docker 镜像与 initrd 临时目录 ──
-          docker rmi "wjz304/rr:${RR_IMAGE_TAG}" >/dev/null 2>&1 || true
-          docker builder prune -af >/dev/null 2>&1 || true
-          sudo rm -rf /tmp/docker_ainas /tmp/docker_root /tmp/initrd_work || true
-          echo "[INFO] 已清理 docker 镜像与 initrd 临时目录"
-          df -h
+
 
           # ── 清理 p3 临时文件 ──────────────────────────────────────
           sudo mkdir -p "$SYSTEM_MNT"
@@ -816,7 +811,6 @@ jobs:
             ZIP_NAME="${ARTIFACT}.img.gz"
           fi
 
-#          rm -f rr/rr.base.img
           rm -rf "$AINAS2IN1_DIR" "${STAGE_HELPER:-}"
 
           echo "ARTIFACT=${ARTIFACT}"   >> "$GITHUB_ENV"
