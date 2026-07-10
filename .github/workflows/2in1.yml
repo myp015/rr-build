@@ -332,7 +332,7 @@ jobs:
           # ── 早删 rr.base.img 备份，释放约 15G ──
           rm -f rr/rr.base.img || true
           echo "[INFO] 已删除 rr.base.img 备份"
-          df -h /
+          df -h
 
 
           # ── 挂载 p3 分区 ───────────────────────────────────────────
@@ -600,7 +600,7 @@ jobs:
           docker builder prune -af >/dev/null 2>&1 || true
           sudo rm -rf /tmp/docker_ainas /tmp/docker_root /tmp/initrd_work || true
           echo "[INFO] 已清理 docker 镜像与 initrd 临时目录"
-          df -h /
+          df -h
 
           # ── 清理 p3 临时文件 ──────────────────────────────────────
           sudo mkdir -p "$SYSTEM_MNT"
