@@ -744,14 +744,14 @@ jobs:
           ls -lh "$OUT"
           echo "DEBUG_IMG=$OUT" >> "$GITHUB_ENV"
 
-      - name: 上传失败调试镜像到 Actions 制品区
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rr-img-failed-${{ matrix.model }}
-          path: rr/rr-failed-${{ matrix.model }}.img.gz
-          retention-days: 7
-          if-no-files-found: warn
+       #- name: 上传失败调试镜像到 Actions 制品区
+        #if: failure()
+       # uses: actions/upload-artifact@v4
+        #with:
+          #name: rr-img-failed-${{ matrix.model }}
+          #path: rr/rr-failed-${{ matrix.model }}.img.gz
+          #retention-days: 7
+          #if-no-files-found: warn
 
 
 
