@@ -846,14 +846,14 @@ jobs:
     steps:
       - name: 失败后自动重跑失败的 job(最多 3 轮)
         env:
-          GH_TOKEN: ${{ secrets.ACTION_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           ATTEMPT="${{ github.run_attempt }}"
           echo "[INFO] 当前运行尝试次数 run_attempt=${ATTEMPT}"
           if [ "${ATTEMPT}" -lt 3 ]; then
             echo "[INFO] 未达上限,触发重跑失败的 job"
-            gh run rerun "${{ github.run_id }}" --failed
+            gh run rerun "${{ github.run_id }}" --failed --repo "${{ github.repository }}"
           else
             echo "[INFO] 已达最大重试次数(3),不再重跑"
           fi
