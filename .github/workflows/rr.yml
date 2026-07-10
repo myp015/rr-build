@@ -60,7 +60,6 @@ on:
         description: "Image size"
         type: choice
         options:
-          - 2GB
           - 2.5GB
           - 4GB
         default: 2.5GB
@@ -441,8 +440,10 @@ jobs:
           RC=0
           for i in $(seq 1 "${MAX_RETRY}"); do
             echo "[INFO] 第 ${i}/${MAX_RETRY} 次尝试(选版本+编译)"
+            set +e
             fetch_and_make
             RC=$?
+            set -e
             if [ "${RC}" -eq 0 ]; then
               echo "[INFO] 编译成功"; break
             fi
@@ -516,15 +517,9 @@ jobs:
 
           # ── 按目标大小 Repack 镜像 ────────────────────────────────
           case "$IMAGE_SIZE" in
-            2GB)
-              gzip -dc "$GRUB_IMG" > rr/rr_2GB.img
-              repack_rr_Img rr/rr.img rr/rr_2GB.img
-              rm -f rr/rr.img
-              mv -f rr/rr_2GB.img rr/rr.img
-              ;;
             2.5GB)
               gzip -dc "$GRUB_IMG" > rr/rr_2GB.img
-              resizeImg rr/rr_2GB.img +1024M
+ #            resizeImg rr/rr_2GB.img +1024M
               repack_rr_Img rr/rr.img rr/rr_2GB.img
               rm -f rr/rr.img
               mv -f rr/rr_2GB.img rr/rr.img

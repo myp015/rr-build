@@ -537,8 +537,10 @@ jobs:
             RC=0
             for i in $(seq 1 "${MAX_RETRY}"); do
               echo "[INFO] 第 ${i}/${MAX_RETRY} 次尝试(选版本+编译)"
+              set +e
               fetch_and_make
               RC=$?
+              set -e
               if [ "${RC}" -eq 0 ]; then
                 echo "[INFO] 编译成功"; break
               fi
