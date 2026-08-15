@@ -326,6 +326,17 @@ jobs:
           sudo bash -c 'cd /tmp && bash "$1" "$2" "$3"' _ "$AINAS2IN1_DIR/script/2in1_grubcfg_patch.sh" "$MODEL" "$DSM_LINE_SHORT"
           sudo cp -f /tmp/grub.cfg "$GRUB_MNT/boot/grub/grub.cfg"
           echo "[INFO] grub.cfg 修补成功"
+
+          # 确保 p1 存在 AINAS_VERSION（原版为 RR_VERSION，改名以匹配 consts.sh / update-list.yml）
+          if [ -f "$GRUB_MNT/RR_VERSION" ]; then
+            sudo cp -f "$GRUB_MNT/RR_VERSION" "$GRUB_MNT/AINAS_VERSION"
+            echo "[INFO] p1 已由 RR_VERSION 生成 AINAS_VERSION: $(sudo cat "$GRUB_MNT/AINAS_VERSION" | tr -d '\r\n ')"
+          elif [ -f "$GRUB_MNT/AINAS_VERSION" ]; then
+            echo "[INFO] p1 AINAS_VERSION 已存在: $(sudo cat "$GRUB_MNT/AINAS_VERSION" | tr -d '\r\n ')"
+          else
+            echo "[WARN] p1 无 AINAS_VERSION / RR_VERSION，跳过版本文件处理"
+          fi
+
           sudo umount "$GRUB_MNT" || true
           sudo losetup --detach "$GRUB_LOOP" || true
           
