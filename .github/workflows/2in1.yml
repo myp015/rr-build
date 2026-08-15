@@ -58,9 +58,9 @@ on:
         default: ""      
         
       build_update_zip:
-        description: "编译升级包（updateall-*.zip）默认关闭"
+        description: "编译升级包（updateall-*.zip）默认开启"
         type: boolean
-        default: false
+        default: true
       rr_version:
         description: "RR version (可选，留空=latest；示例：26.4.0 或 v26.4.0)"
         type: string
