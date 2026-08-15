@@ -58,7 +58,7 @@ on:
         default: ""      
         
       build_update_zip:
-        description: "编译升级包（update_xxx.zip）"
+        description: "编译升级包（updateall-*.zip）默认关闭"
         type: boolean
         default: false
       rr_version:
@@ -615,8 +615,8 @@ jobs:
             RAW_UPDATE_ZIP="updateall-${SAFE_TAG}.zip"
             [ -f "$RAW_UPDATE_ZIP" ] || RAW_UPDATE_ZIP="$(ls -1 updateall-*.zip 2>/dev/null | head -n1 || true)"
             if [ -n "$RAW_UPDATE_ZIP" ] && [ -f "$RAW_UPDATE_ZIP" ]; then
-              UPDATE_ZIP="update_${SAFE_TAG}_${UPDATE_FLAVOR}.zip"
-              mv -f "$RAW_UPDATE_ZIP" "$UPDATE_ZIP"
+              # 保持 updateall-*.zip 原名上传，不再重命名
+              UPDATE_ZIP="$(basename "$RAW_UPDATE_ZIP")"
             fi
           else
             # ── 2in1 镜像重打包 ───────────────────────────────────
