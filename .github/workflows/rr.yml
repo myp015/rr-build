@@ -499,7 +499,6 @@ jobs:
           fi
           
           # ── RR 原版镜像任务：跳过 Docker 编译 ──────────────
-          USER_CONFIG_YML="user-config.yml"
           if [ "${MODEL}" != "__RR_ORIGINAL__" ]; then
           # ── 使用 RR Docker 编译镜像 ───────────────────────────────
           cat > build.sh <<'EOF2'
@@ -630,7 +629,9 @@ jobs:
           sudo umount "$SYSTEM_MNT" || true
           sudo losetup --detach "$DISK_LOOP"
 
-          # ── 提取 user-config.yml ──────────────────────────────────
+          fi
+
+          # ── 提取 user-config.yml（模型/RR原版任务都需要）──
           . "$AINAS2IN1_DIR/script/2in1func.sh"
           USER_CONFIG_YML="user-config.yml"
           USER_LOOP=$(sudo losetup -f)
@@ -641,7 +642,6 @@ jobs:
           sudo umount /mnt/p1 || true
           sudo losetup --detach "$USER_LOOP" || true
 
-          fi
           # ── 选择引导镜像 ──────────────────────────────────────────
           if [ "$(printf '%s\n' "${RR_TAG}" "26.2.2" | sort -V | head -n1)" = "26.2.2" ]; then
             GRUB_IMG="ainas/grub2.14.img.gz"
@@ -689,14 +689,15 @@ jobs:
           rm -f rr/rr.img rr/rr.base.img
 
           if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-            # 原版 RR 镜像：命名 rr-<版本>.img.zip
+            # 原版 RR 镜像：命名 rr-<版本>.img.zip，只打包 img（不带 user-config.yml）
             ARTIFACT_ZIP="rr-${RR_TAG}.img.zip"
+            zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img"
           else
             ARTIFACT_ZIP="${ARTIFACT_NAME}.zip"
-          fi
-          zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
-          if [ -d "ainas" ]; then
-            find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
+            zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
+            if [ -d "ainas" ]; then
+              find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
+            fi
           fi
 
           echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> "$GITHUB_ENV"
