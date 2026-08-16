@@ -409,7 +409,13 @@ jobs:
 
           sudo mount -o rw "${GRUB_LOOP}p1" "$GRUB_MNT"
           echo "[INFO] 开始修补 grub.cfg"
-          sudo env MODEL_ENV="$MODEL" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
+          # RR 原版镜像任务无型号，MODEL_ENV 置空 → patch 脚本默认 model=Boot DSM
+          if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
+            GRUB_MODEL_ENV=""
+          else
+            GRUB_MODEL_ENV="$MODEL"
+          fi
+          sudo env MODEL_ENV="$GRUB_MODEL_ENV" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
           echo "[INFO] grub.cfg 修补成功"
           sudo umount "$GRUB_MNT" || true
           sudo losetup --detach "$GRUB_LOOP" || true
