@@ -266,6 +266,13 @@ jobs:
             sudo mkdir -p "$SYSTEM_MNT"
             sudo mount "${DISK_LOOP}p3" "$SYSTEM_MNT"
 
+            # ── grub.cfg 修补（update 场景 model 空 → Boot DSM）──
+            echo "[INFO] 修补 grub.cfg（update 场景 model=Boot DSM）"
+            sudo mkdir -p /mnt/p1
+            sudo mount -o rw "${DISK_LOOP}p1" /mnt/p1
+            sudo env MODEL_ENV="" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" /mnt/p1/boot/grub/grub.cfg
+            sudo umount /mnt/p1 || true
+
             # ── cpuinfo 插件修补 ──────────────────────────────
             echo "[INFO] 修补 cpuinfo 插件"
             CPUINFO_TGZ="$SYSTEM_MNT/addons/cpuinfo/all.tgz"
