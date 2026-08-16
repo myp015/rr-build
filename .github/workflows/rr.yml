@@ -355,6 +355,8 @@ jobs:
           cd "$INITRD_WORK"
           sudo bash "$AINAS2IN1_DIR/script/replace_ainas_po_notice.sh"
           sudo AINAS2IN1_DIR="$AINAS2IN1_DIR" bash -c 'set -euo pipefail; . "${AINAS2IN1_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
+          # RR 版 menu.sh patch：升级菜单改为订单验证模式（本地包直接更新；在线下载需订单号验证 kind=rr）
+          sudo bash "$AINAS2IN1_DIR/script/2in1_ram_patch-rr.sh"
           cd "$WORKDIR"
 
           echo "[INFO] 使用 repackInitrd 重新打包 initrd-rr"
@@ -548,6 +550,11 @@ jobs:
 
           rm -f rr/rr.img rr/rr.base.img
 
+          # ── 打包 updateall-<版本号>.zip（RR 版，不分 dt/nodt）──
+          bash "$AINAS2IN1_DIR/script/2in1_build_update.sh" rr/rr.img "$GITHUB_WORKSPACE" "" "rr"
+          UPDATE_ZIP="$(ls -1 updateall-*.zip 2>/dev/null | head -n1 || true)"
+          echo "UPDATE_ZIP=$UPDATE_ZIP" >> "$GITHUB_ENV"
+
           ARTIFACT_ZIP="${ARTIFACT_NAME}.zip"
           zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
           if [ -d "ainas" ]; then
@@ -578,8 +585,15 @@ jobs:
               --title "$RELEASE_TAG" \
               --notes "RR build artifacts for ${RR_TAG}" \
               --latest=false
+            # 上传 updateall 包（若存在）
+            if [ -n "${UPDATE_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$UPDATE_ZIP" ]; then
+              gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$UPDATE_ZIP" --clobber
+            fi
             exit 0
           fi
 
           echo "[INFO] 正在向已有发布 ${RELEASE_TAG} 上传制品"
           gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" --clobber
+          if [ -n "${UPDATE_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$UPDATE_ZIP" ]; then
+            gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$UPDATE_ZIP" --clobber
+          fi
