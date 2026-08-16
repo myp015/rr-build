@@ -56,6 +56,10 @@ on:
         description: "自定义型号(工作流未列出的,多个用逗号分隔,如 DS1621+,RS4021xs+)"
         type: string
         default: ""      
+      build_update_zip:
+        description: "编译升级包（updateall-*.zip）默认开启，可取消"
+        type: boolean
+        default: true
       image_size:
         description: "Image size"
         type: choice
@@ -194,6 +198,7 @@ jobs:
     env:
       IMAGE_FORMAT: img
       IMAGE_SIZE: ${{ inputs.image_size }}
+      BUILD_UPDATE_ZIP: ${{ inputs.build_update_zip }}
       LANGUAGE: zh_CN
       BUILD_KERNEL: official
       ADDONS: acpid,reboottoloader,addincards,cpuinfo,expands,diskcompat,lsiutil,nvmevolume,powersched,remotefs,storagepanel,smartctl,trivial,apppatch,vmtools
@@ -536,6 +541,15 @@ jobs:
           esac
           echo "[INFO] 最终镜像大小(字节): $(stat -c%s rr/rr.img)"
 
+          # ── 打包 updateall-<版本号>.zip（RR 版，不分 dt/nodt；可取消）──
+          if [ "${BUILD_UPDATE_ZIP:-true}" = "true" ]; then
+            bash "$AINAS2IN1_DIR/script/2in1_build_update.sh" rr/rr.img "$GITHUB_WORKSPACE" "" "rr"
+            UPDATE_ZIP="$(ls -1 updateall-*.zip 2>/dev/null | head -n1 || true)"
+            echo "UPDATE_ZIP=$UPDATE_ZIP" >> "$GITHUB_ENV"
+          else
+            echo "[INFO] 已取消编译 update 升级包"
+          fi
+
           # ── 导出并打包制品 ────────────────────────────────────────
           case "$IMAGE_FORMAT" in
             img)
@@ -549,11 +563,6 @@ jobs:
           esac
 
           rm -f rr/rr.img rr/rr.base.img
-
-          # ── 打包 updateall-<版本号>.zip（RR 版，不分 dt/nodt）──
-          bash "$AINAS2IN1_DIR/script/2in1_build_update.sh" rr/rr.img "$GITHUB_WORKSPACE" "" "rr"
-          UPDATE_ZIP="$(ls -1 updateall-*.zip 2>/dev/null | head -n1 || true)"
-          echo "UPDATE_ZIP=$UPDATE_ZIP" >> "$GITHUB_ENV"
 
           ARTIFACT_ZIP="${ARTIFACT_NAME}.zip"
           zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
