@@ -699,15 +699,22 @@ jobs:
             rm -f "${ARTIFACT_NAME}.img"
             zip -9 -q "$ARTIFACT_ZIP" rr.img
             if [ -d "ainas" ]; then
-              find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
+              for exe in ainas/*.exe; do
+                [ -f "$exe" ] && zip -qj "$ARTIFACT_ZIP" "$exe"
+              done
             fi
           else
             ARTIFACT_ZIP="${ARTIFACT_NAME}.zip"
             zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
             if [ -d "ainas" ]; then
-              find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
+              for exe in ainas/*.exe; do
+                [ -f "$exe" ] && zip -qj "$ARTIFACT_ZIP" "$exe"
+              done
             fi
           fi
+          echo "[INFO] ${ARTIFACT_ZIP} 内容:"
+          zipinfo -1 "$ARTIFACT_ZIP" | sed 's/^/  /'
+          echo "[INFO] exe 数量: $(zipinfo -1 "$ARTIFACT_ZIP" | grep -c '\.exe$')"
 
           echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> "$GITHUB_ENV"
           echo "ARTIFACT_ZIP=$ARTIFACT_ZIP" >> "$GITHUB_ENV"
