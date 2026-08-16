@@ -689,9 +689,12 @@ jobs:
           rm -f rr/rr.img rr/rr.base.img
 
           if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-            # 原版 RR 镜像：命名 rr-<版本>.img.zip，只打包 img（不带 user-config.yml）
+            # 原版 RR 镜像：命名 rr-<版本>.img.zip，打包 img + exe（不含 user-config.yml）
             ARTIFACT_ZIP="rr-${RR_TAG}.img.zip"
             zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img"
+            if [ -d "ainas" ]; then
+              find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
+            fi
           else
             ARTIFACT_ZIP="${ARTIFACT_NAME}.zip"
             zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img" user-config.yml
