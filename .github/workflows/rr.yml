@@ -178,16 +178,21 @@ jobs:
           done
           MODELS=("${UNIQ_MODELS[@]}")
 
-          if [ ${#MODELS[@]} -eq 0 ]; then
-            echo "[E] 请至少勾选一个型号"
+          if [ ${#MODELS[@]} -eq 0 ] && [ "${{ inputs.build_update_zip }}" != "true" ]; then
+            echo "[E] 请至少勾选一个型号，或勾选 update 包编译"
             exit 1
           fi
 
-          echo "[INFO] 已选择型号: ${MODELS[*]}"
+          # update 包作为独立任务（不分 dt/nodt）
+          if [ "${{ inputs.build_update_zip }}" = "true" ]; then
+            MODELS+=("__UPDATE__")
+          fi
+
+          echo "[INFO] 已选择任务: ${MODELS[*]}"
           MODELS_JSON=$(printf "%s\n" "${MODELS[@]}" | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")
           echo "models=$MODELS_JSON" >> "$GITHUB_OUTPUT"
   build:
-    name: ${{ format('build ({0})', matrix.model) }}
+    name: ${{ matrix.model == '__UPDATE__' && 'build (update)' || format('build ({0})', matrix.model) }}
     needs: [resolve-release, select-models]
     runs-on: ubuntu-latest
     strategy:
@@ -240,6 +245,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # ── UPDATE 独立任务：只打包 updateall，不编译模型 ──────
+          if [ "${MODEL}" = "__UPDATE__" ]; then
+            WORKDIR="$PWD"
+            AINAS2IN1_DIR="${WORKDIR}/.2in1"
+            : "${RR_FILENAME:?缺少 RR_FILENAME}"
+            echo "[INFO] UPDATE 任务：解压 RR 镜像并打包 updateall"
+            unzip "$RR_FILENAME" -d rr rr.img
+
+            echo "[INFO] 打包 updateall-<版本号>.zip（RR 版，不分 dt/nodt）"
+            bash "$AINAS2IN1_DIR/script/2in1_build_update.sh" rr/rr.img "$GITHUB_WORKSPACE" "" "rr"
+            UPDATE_ZIP="$(ls -1 updateall-*.zip 2>/dev/null | head -n1 || true)"
+            echo "UPDATE_ZIP=$UPDATE_ZIP" >> "$GITHUB_ENV"
+
+            # 无需上传镜像，直接结束
+            exit 0
+          fi
 
           # ── 目录与常量 ────────────────────────────────────────────
           WORKDIR="$PWD"
@@ -541,15 +563,6 @@ jobs:
           esac
           echo "[INFO] 最终镜像大小(字节): $(stat -c%s rr/rr.img)"
 
-          # ── 打包 updateall-<版本号>.zip（RR 版，不分 dt/nodt；可取消）──
-          if [ "${BUILD_UPDATE_ZIP:-true}" = "true" ]; then
-            bash "$AINAS2IN1_DIR/script/2in1_build_update.sh" rr/rr.img "$GITHUB_WORKSPACE" "" "rr"
-            UPDATE_ZIP="$(ls -1 updateall-*.zip 2>/dev/null | head -n1 || true)"
-            echo "UPDATE_ZIP=$UPDATE_ZIP" >> "$GITHUB_ENV"
-          else
-            echo "[INFO] 已取消编译 update 升级包"
-          fi
-
           # ── 导出并打包制品 ────────────────────────────────────────
           case "$IMAGE_FORMAT" in
             img)
@@ -580,29 +593,34 @@ jobs:
         run: |
           set -euo pipefail
           : "${RR_TAG:?缺少 RR_TAG}"
-          : "${ARTIFACT_ZIP:?缺少 ARTIFACT_ZIP}"
           : "${ACTION_TOKEN:?缺少 ACTION_TOKEN}"
 
           export GH_TOKEN="$ACTION_TOKEN"
           export GH_REPO="myp015/ainas2in1"
           RELEASE_TAG="rr-${RR_TAG}"
 
+          # 组装待上传资产（模型镜像 + update 包，任一存在即可）
+          ASSETS=()
+          if [ -n "${ARTIFACT_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" ]; then
+            ASSETS+=("$GITHUB_WORKSPACE/$ARTIFACT_ZIP")
+          fi
+          if [ -n "${UPDATE_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$UPDATE_ZIP" ]; then
+            ASSETS+=("$GITHUB_WORKSPACE/$UPDATE_ZIP")
+          fi
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "[E] 没有可上传的资产"
+            exit 1
+          fi
+
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "[INFO] 发布标签 ${RELEASE_TAG} 不存在，正在创建"
             gh release create "$RELEASE_TAG" \
-              "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" \
+              "${ASSETS[@]}" \
               --title "$RELEASE_TAG" \
               --notes "RR build artifacts for ${RR_TAG}" \
               --latest=false
-            # 上传 updateall 包（若存在）
-            if [ -n "${UPDATE_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$UPDATE_ZIP" ]; then
-              gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$UPDATE_ZIP" --clobber
-            fi
             exit 0
           fi
 
           echo "[INFO] 正在向已有发布 ${RELEASE_TAG} 上传制品"
-          gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" --clobber
-          if [ -n "${UPDATE_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$UPDATE_ZIP" ]; then
-            gh release upload "$RELEASE_TAG" "$GITHUB_WORKSPACE/$UPDATE_ZIP" --clobber
-          fi
+          gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
