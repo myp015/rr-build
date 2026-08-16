@@ -266,6 +266,43 @@ jobs:
             sudo mkdir -p "$SYSTEM_MNT"
             sudo mount "${DISK_LOOP}p3" "$SYSTEM_MNT"
 
+            # ── cpuinfo 插件修补 ──────────────────────────────
+            echo "[INFO] 修补 cpuinfo 插件"
+            CPUINFO_TGZ="$SYSTEM_MNT/addons/cpuinfo/all.tgz"
+            CPUINFO_WORK="/tmp/cpuinfo_patch"
+            if [ -f "$CPUINFO_TGZ" ]; then
+              rm -rf "$CPUINFO_WORK"
+              mkdir -p "$CPUINFO_WORK/extract" "$CPUINFO_WORK/rootfs"
+              sudo tar -zxf "$CPUINFO_TGZ" -C "$CPUINFO_WORK/extract"
+
+              CPUINFO_PATCH_TARGET=""
+              CPUINFO_REPACK_MODE=""
+              if [ -f "$CPUINFO_WORK/extract/all.tar" ]; then
+                CPUINFO_REPACK_MODE="inner-tar"
+                sudo tar -xf "$CPUINFO_WORK/extract/all.tar" -C "$CPUINFO_WORK/rootfs"
+                [ -f "$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh" ] && \
+                  CPUINFO_PATCH_TARGET="$CPUINFO_WORK/rootfs/root/usr/bin/cpuinfo.sh"
+              elif [ -f "$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh" ]; then
+                CPUINFO_REPACK_MODE="direct"
+                CPUINFO_PATCH_TARGET="$CPUINFO_WORK/extract/root/usr/bin/cpuinfo.sh"
+              fi
+
+              if [ -n "$CPUINFO_PATCH_TARGET" ]; then
+                python3 "$AINAS2IN1_DIR/script/patch-cpuinfo.py" "$CPUINFO_PATCH_TARGET"
+                if [ "$CPUINFO_REPACK_MODE" = "inner-tar" ]; then
+                  (cd "$CPUINFO_WORK/rootfs" && sudo tar -cf "$CPUINFO_WORK/extract/all.tar" .)
+                  (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
+                else
+                  (cd "$CPUINFO_WORK/extract" && sudo tar -czf "$CPUINFO_TGZ" .)
+                fi
+                echo "[INFO] cpuinfo all.tgz 重新打包成功 (模式=$CPUINFO_REPACK_MODE)"
+              else
+                echo "[INFO] cpuinfo.sh 未找到，跳过 cpuinfo 修补"
+              fi
+            else
+              echo "[INFO] $CPUINFO_TGZ 不存在，跳过 cpuinfo 修补"
+            fi
+
             INITRD_SRC="$SYSTEM_MNT/initrd-rr"
             INITRD_WORK="/tmp/initrd_work"
             INITRD_NEW="/tmp/initrd-rr.new"
