@@ -651,14 +651,9 @@ jobs:
           echo "[INFO] rr tag=${RR_TAG} 选用的引导镜像=${GRUB_IMG}"
 
           # ── 按目标大小 Repack 镜像 ────────────────────────────────
-          # 原版 RR 镜像任务：2.5GB 模板扩到 4GB 再拷贝数据（保证 zip 大小正常）
+          # 原版 RR 镜像任务：保持原版镜像（不 repack），zip -9 压缩（官方做法，避免文件系统膨胀）
           if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-            echo "[INFO] RR 原版镜像任务：2.5GB 模板 resize +1024M 后 repack"
-            gzip -dc "$GRUB_IMG" > rr/rr_2.5GB.img
-            resizeImg rr/rr_2.5GB.img +1024M
-            repack_rr_Img rr/rr.img rr/rr_2.5GB.img
-            rm -f rr/rr.img
-            mv -f rr/rr_2.5GB.img rr/rr.img
+            echo "[INFO] RR 原版镜像任务：保持原版镜像，不 repack（zip -9 压缩，官方做法）"
           else
           case "$IMAGE_SIZE" in
             2.5GB)
@@ -682,12 +677,6 @@ jobs:
           # ── 导出并打包制品 ────────────────────────────────────────
           case "$IMAGE_FORMAT" in
             img)
-              # RR 原版镜像：patch 挂载会填充稀疏空洞，先稀疏化再导出，保证 zip 接近原始大小
-              if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-                echo "[INFO] RR 原版镜像任务：cp --sparse=always 重建稀疏文件"
-                cp --sparse=always rr/rr.img rr/rr.sparse.img
-                mv -f rr/rr.sparse.img rr/rr.img
-              fi
               mv -f rr/rr.img "${ARTIFACT_NAME}.img"
               [ "$USER_CONFIG_YML" = "user-config.yml" ] || mv -f "$USER_CONFIG_YML" "user-config.yml"
               ;;
@@ -700,9 +689,9 @@ jobs:
           rm -f rr/rr.img rr/rr.base.img
 
           if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-            # 原版 RR 镜像：命名 rr-<版本>.img.zip，打包 img + exe（不含 user-config.yml）
+            # 原版 RR 镜像：官方压缩命令 zip -9，命名 rr-<版本>.img.zip，打包 img + exe（不含 user-config.yml）
             ARTIFACT_ZIP="rr-${RR_TAG}.img.zip"
-            zip -qr "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img"
+            zip -9 -q "$ARTIFACT_ZIP" "${ARTIFACT_NAME}.img"
             if [ -d "ainas" ]; then
               find ainas -maxdepth 1 -type f -name '*.exe' -exec zip -qj "$ARTIFACT_ZIP" {} +
             fi
