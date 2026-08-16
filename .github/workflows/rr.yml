@@ -731,12 +731,32 @@ jobs:
           RELEASE_TAG="rr-${RR_TAG}"
 
           # 组装待上传资产（模型镜像 + update 包，任一存在即可）
+          # GitHub 单文件上限 2GB，超过则 split 分卷上传（.part1/.part2/...）
+          MAX_ASSET_BYTES=2147483648
+          SPLIT_SIZE_MB=1900
+          add_asset_with_split() {
+            local f="$1"
+            local sz
+            sz=$(stat -c%s "$f")
+            if [ "$sz" -gt "$MAX_ASSET_BYTES" ]; then
+              echo "[INFO] ${f##*/} 大小 ${sz} 超过 2GB 限制，split 分卷 (${SPLIT_SIZE_MB}MB/卷)"
+              local base="${f%.zip}"
+              split -b "${SPLIT_SIZE_MB}M" -d -a 2 "$f" "${base}.part"
+              local p
+              for p in "${base}".part*; do
+                ASSETS+=("$p")
+                echo "  -> ${p##*/} ($(stat -c%s "$p") 字节)"
+              done
+            else
+              ASSETS+=("$f")
+            fi
+          }
           ASSETS=()
           if [ -n "${ARTIFACT_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$ARTIFACT_ZIP" ]; then
-            ASSETS+=("$GITHUB_WORKSPACE/$ARTIFACT_ZIP")
+            add_asset_with_split "$GITHUB_WORKSPACE/$ARTIFACT_ZIP"
           fi
           if [ -n "${UPDATE_ZIP:-}" ] && [ -f "$GITHUB_WORKSPACE/$UPDATE_ZIP" ]; then
-            ASSETS+=("$GITHUB_WORKSPACE/$UPDATE_ZIP")
+            add_asset_with_split "$GITHUB_WORKSPACE/$UPDATE_ZIP"
           fi
           if [ ${#ASSETS[@]} -eq 0 ]; then
             echo "[E] 没有可上传的资产"
