@@ -246,13 +246,47 @@ jobs:
         run: |
           set -euo pipefail
 
-          # ── UPDATE 独立任务：只打包 updateall，不编译模型 ──────
+          # ── UPDATE 独立任务：应用 initrd patch 后打包 updateall ──
           if [ "${MODEL}" = "__UPDATE__" ]; then
             WORKDIR="$PWD"
             AINAS2IN1_DIR="${WORKDIR}/.2in1"
+            SYSTEM_MNT="/mnt/p3"
             : "${RR_FILENAME:?缺少 RR_FILENAME}"
-            echo "[INFO] UPDATE 任务：解压 RR 镜像并打包 updateall"
+            echo "[INFO] UPDATE 任务：解压 RR 镜像，应用 initrd patch，再打包 updateall"
             unzip "$RR_FILENAME" -d rr rr.img
+
+            # 系统依赖
+            sudo apt-get update
+            sudo apt-get install -y gettext cpio zstd dosfstools rsync qemu-utils
+
+            # 挂载 p3，修补 initrd（menu.sh 订单验证 patch 等）
+            . "$AINAS2IN1_DIR/script/2in1func.sh"
+            DISK_LOOP=$(sudo losetup -f)
+            sudo losetup -P "$DISK_LOOP" rr/rr.img
+            sudo mkdir -p "$SYSTEM_MNT"
+            sudo mount "${DISK_LOOP}p3" "$SYSTEM_MNT"
+
+            INITRD_SRC="$SYSTEM_MNT/initrd-rr"
+            INITRD_WORK="/tmp/initrd_work"
+            INITRD_NEW="/tmp/initrd-rr.new"
+            echo "[INFO] 解包并修补 initrd-rr"
+            sudo rm -rf "$INITRD_WORK" "$INITRD_NEW"
+            sudo mkdir -p "$INITRD_WORK"
+            unpackInitrd "$INITRD_SRC" "$INITRD_WORK"
+
+            cd "$INITRD_WORK"
+            sudo bash "$AINAS2IN1_DIR/script/replace_ainas_po_notice.sh"
+            sudo AINAS2IN1_DIR="$AINAS2IN1_DIR" bash -c 'set -euo pipefail; . "${AINAS2IN1_DIR}/script/2in1func.sh"; convertpo2mo opt/rr/lang'
+            sudo bash "$AINAS2IN1_DIR/script/rr_ram_patch.sh"
+            cd "$WORKDIR"
+
+            echo "[INFO] 重新打包 initrd-rr"
+            repackInitrd "$INITRD_SRC" "$INITRD_WORK" "$INITRD_NEW"
+            sudo cp -f "$INITRD_NEW" "$INITRD_SRC"
+            sudo sync
+            sudo rm -rf "$INITRD_WORK" "$INITRD_NEW"
+            sudo umount "$SYSTEM_MNT" || true
+            sudo losetup --detach "$DISK_LOOP" || true
 
             echo "[INFO] 打包 updateall-<版本号>.zip（RR 版，不分 dt/nodt）"
             bash "$AINAS2IN1_DIR/script/2in1_build_update.sh" rr/rr.img "$GITHUB_WORKSPACE" "" "rr"
