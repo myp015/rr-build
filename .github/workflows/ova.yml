@@ -428,9 +428,17 @@ jobs:
             echo "[INFO] 已获取 paturl: ${PAT_URL}"
 
             set +e
-            menu.sh make
-            local rc=$?
+            # RR 会把部分 ramdisk/addon 错误只写到 dialog/log，退出码仍可能为 0。
+            # 必须保存并扫描 make 输出，否则会发布可构建但无法从 RR 切换至 DSM 的 OVA。
+            menu.sh make 2>&1 | tee /tmp/make.log
+            local rc=${PIPESTATUS[0]}
             set -e
+
+            if grep -Eq 'ramdisk patch 失败|installAddon: .*addon not found|patch 失败|ERROR:' /tmp/make.log; then
+              echo "[E] 检测到编译错误（ramdisk/addon patch 失败），拒绝发布该镜像"
+              return 1
+            fi
+
             return "${rc}"
           }
 
