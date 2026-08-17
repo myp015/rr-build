@@ -199,9 +199,39 @@ jobs:
           echo "[INFO] 已选择任务: ${MODELS[*]}"
           MODELS_JSON=$(printf "%s\n" "${MODELS[@]}" | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")
           echo "models=$MODELS_JSON" >> "$GITHUB_OUTPUT"
+
+  # 单独串行创建并确认 Release，避免原版/update matrix 任务同时创建/查询同一标签。
+  ensure-release:
+    needs: resolve-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: 创建或确认 RR Release
+        shell: bash
+        env:
+          ACTION_TOKEN: ${{ secrets.ACTION_TOKEN }}
+          RR_TAG: ${{ needs.resolve-release.outputs.rr_tag }}
+        run: |
+          set -euo pipefail
+          : "${ACTION_TOKEN:?缺少 ACTION_TOKEN}"
+          : "${RR_TAG:?缺少 RR_TAG}"
+          export GH_TOKEN="$ACTION_TOKEN"
+          export GH_REPO="myp015/ainas2in1"
+          RELEASE_TAG="rr-${RR_TAG}"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "[INFO] Release 已存在: $RELEASE_TAG"
+            exit 0
+          fi
+          echo "[INFO] 创建 Release: $RELEASE_TAG"
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_TAG" \
+            --notes "RR build artifacts for ${RR_TAG}" \
+            --latest=false
+          gh release view "$RELEASE_TAG" >/dev/null
+          echo "[INFO] Release 已确认可见: $RELEASE_TAG"
+
   build:
     name: ${{ matrix.model == '__UPDATE__' && 'build (update)' || (matrix.model == '__RR_ORIGINAL__' && 'build (rr-original)' || format('build ({0})', matrix.model)) }}
-    needs: [resolve-release, select-models]
+    needs: [resolve-release, select-models, ensure-release]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -792,38 +822,6 @@ jobs:
             exit 1
           fi
 
-          # matrix 并发任务会同时创建同一 Release。GitHub 创建后短时间内可能出现
-          # “tag already exists”但 release view 仍 404 的最终一致性窗口，必须轮询等待。
-          ensure_release() {
-            local attempt create_out create_rc
-            for attempt in $(seq 1 12); do
-              if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-                return 0
-              fi
-              if [ "$attempt" -eq 1 ]; then
-                echo "[INFO] 发布标签 ${RELEASE_TAG} 不存在，尝试创建"
-                set +e
-                create_out=$(gh release create "$RELEASE_TAG" \
-                  --title "$RELEASE_TAG" \
-                  --notes "RR build artifacts for ${RR_TAG}" \
-                  --latest=false 2>&1)
-                create_rc=$?
-                set -e
-                if [ "$create_rc" -ne 0 ]; then
-                  echo "$create_out"
-                  if ! echo "$create_out" | grep -qiE 'already exists|already_exists|Validation Failed'; then
-                    return "$create_rc"
-                  fi
-                  echo "[INFO] Release 正由并发任务创建，等待 API 可见"
-                fi
-              fi
-              echo "[INFO] 等待 Release ${RELEASE_TAG} 可见 (${attempt}/12)"
-              sleep 5
-            done
-            echo "[E] Release ${RELEASE_TAG} 创建后仍不可查询" >&2
-            return 1
-          }
-
-          ensure_release
+          # Release 已由 ensure-release 串行 job 创建确认；matrix 任务只上传自身资产。
           echo "[INFO] 上传制品到发布 ${RELEASE_TAG}"
           gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
