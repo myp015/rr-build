@@ -416,6 +416,12 @@ jobs:
             GRUB_MODEL_ENV="$MODEL"
           fi
           sudo env MODEL_ENV="$GRUB_MODEL_ENV" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
+          # RR 原版镜像跳过 Docker 构建；官方 p1 没有 .locale，gettext 会回退原始 msgid。
+          # 显式设为英文，确保 en_US/rr.mo 中的 AiNas 文案生效；后续可在菜单切换中文等语言。
+          if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
+            printf '%s\n' 'en_US.UTF-8' | sudo tee "$GRUB_MNT/.locale" >/dev/null
+            echo "[INFO] RR 原版镜像默认语言：en_US.UTF-8"
+          fi
           echo "[INFO] grub.cfg 修补成功"
           sudo umount "$GRUB_MNT" || true
           sudo losetup --detach "$GRUB_LOOP" || true
@@ -487,8 +493,20 @@ jobs:
           repackInitrd "$INITRD_SRC" "$INITRD_WORK" "$INITRD_NEW"
           sudo cp -f "$INITRD_NEW" "$INITRD_SRC"
           sudo sync
-          sudo rm -rf "$INITRD_WORK" "$INITRD_NEW"
 
+          # 最终 initrd 反查：避免仅看到 msgfmt 日志，却把未修补内容写入制品。
+          # 重点验证英文/中文 rr.mo 均已写回，以及菜单订单验证补丁存在。
+          VERIFY_INITRD="/tmp/initrd_verify"
+          sudo rm -rf "$VERIFY_INITRD"
+          sudo mkdir -p "$VERIFY_INITRD"
+          unpackInitrd "$INITRD_SRC" "$VERIFY_INITRD"
+          test -f "$VERIFY_INITRD/opt/rr/lang/en_US/LC_MESSAGES/rr.mo"
+          test -f "$VERIFY_INITRD/opt/rr/lang/zh_CN/LC_MESSAGES/rr.mo"
+          strings "$VERIFY_INITRD/opt/rr/lang/en_US/LC_MESSAGES/rr.mo" | grep -Fq "Taobao Store: AiNas URL:"
+          strings "$VERIFY_INITRD/opt/rr/lang/zh_CN/LC_MESSAGES/rr.mo" | grep -Fq "淘宝店铺:AiNas"
+          grep -Fq "Please enter your RR order number:" "$VERIFY_INITRD/opt/rr/menu.sh"
+          echo "[INFO] 最终 initrd 验证通过：en_US/zh_CN rr.mo + RR 订单菜单补丁均已写入"
+          sudo rm -rf "$VERIFY_INITRD" "$INITRD_WORK" "$INITRD_NEW"
 
           sudo umount "$SYSTEM_MNT" || true
           sudo rm -rf "$SYSTEM_MNT"
@@ -638,6 +656,10 @@ jobs:
           sudo losetup -P "$USER_LOOP" rr/rr.img
           sudo mkdir -p /mnt/p1
           sudo mount "${USER_LOOP}p1" /mnt/p1
+          if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
+            test "$(cat /mnt/p1/.locale 2>/dev/null)" = "en_US.UTF-8"
+            echo "[INFO] RR 原版镜像 p1 locale 验证通过：en_US.UTF-8"
+          fi
           cp -f /mnt/p1/user-config.yml "$USER_CONFIG_YML" 2>/dev/null || true
           sudo umount /mnt/p1 || true
           sudo losetup --detach "$USER_LOOP" || true
