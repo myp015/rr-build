@@ -417,10 +417,10 @@ jobs:
           fi
           sudo env MODEL_ENV="$GRUB_MODEL_ENV" python3 "$AINAS2IN1_DIR/script/patch-grub-cfg.py" "$GRUB_MNT/boot/grub/grub.cfg"
           # RR 原版镜像跳过 Docker 构建；官方 p1 没有 .locale，gettext 会回退原始 msgid。
-          # 显式设为英文，确保 en_US/rr.mo 中的 AiNas 文案生效；后续可在菜单切换中文等语言。
+          # 显式设为中文，确保 zh_CN/rr.mo 中的 AiNas 文案生效；后续可在菜单切换其他语言。
           if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-            printf '%s\n' 'en_US.UTF-8' | sudo tee "$GRUB_MNT/.locale" >/dev/null
-            echo "[INFO] RR 原版镜像默认语言：en_US.UTF-8"
+            printf '%s\n' 'zh_CN.UTF-8' | sudo tee "$GRUB_MNT/.locale" >/dev/null
+            echo "[INFO] RR 原版镜像默认语言：zh_CN.UTF-8"
           fi
           echo "[INFO] grub.cfg 修补成功"
           sudo umount "$GRUB_MNT" || true
@@ -662,8 +662,8 @@ jobs:
           sudo mkdir -p /mnt/p1
           sudo mount "${USER_LOOP}p1" /mnt/p1
           if [ "${MODEL}" = "__RR_ORIGINAL__" ]; then
-            test "$(cat /mnt/p1/.locale 2>/dev/null)" = "en_US.UTF-8"
-            echo "[INFO] RR 原版镜像 p1 locale 验证通过：en_US.UTF-8"
+            test "$(cat /mnt/p1/.locale 2>/dev/null)" = "zh_CN.UTF-8"
+            echo "[INFO] RR 原版镜像 p1 locale 验证通过：zh_CN.UTF-8"
           fi
           cp -f /mnt/p1/user-config.yml "$USER_CONFIG_YML" 2>/dev/null || true
           sudo umount /mnt/p1 || true
