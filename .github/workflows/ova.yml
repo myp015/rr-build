@@ -379,11 +379,6 @@ jobs:
           echo "[INFO] 型号=${MODEL} 目标DSM版本=${DSM_VERSION}"
           menu.sh modelMenu "${MODEL}"
 
-          # OVA 必须由 RR 通过 kexec 切换到 DSM；RR 默认 kernelway=power 会关机后重回 RR，
-          # 在部分型号（本次 DS425+、DS3622xs+）上表现为 loader 循环、DSM 5000 永远不就绪。
-          writeConfigKey "kernelway" "kexec" "${USER_CONFIG_FILE}"
-          echo "[INFO] OVA kernelway=$(readConfigKey "kernelway" "${USER_CONFIG_FILE}")（必须为 kexec）"
-
           LOCALE_FILE="$(dirname "${USER_CONFIG_FILE}")/.locale"
           echo "${LANGUAGE}.UTF-8" >"${LOCALE_FILE}"
           echo "[INFO] locale 文件内容: $(cat "${LOCALE_FILE}" 2>/dev/null || echo 缺失)"
