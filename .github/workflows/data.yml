@@ -31,7 +31,7 @@ jobs:
 
       - name: Get Data
         run: |
-          REPO="${{ github.server_url }}/${{ github.repository }}"
+          REPO="https://github.com/RROrg/rr"
           PRERELEASE="true"
 
           TAG=""
