@@ -99,6 +99,7 @@ jobs:
           rm -rf "/tmp/mnt/p3"
 
           # 仅生成 pats（models/addons/modules 不再生成）
+          mkdir -p docs
           python3 scripts/func.py getpats -w "rr/initrd" -j "docs/pats.json" -x "docs/pats.xlsx"
 
           rm -rf "rr/initrd"
