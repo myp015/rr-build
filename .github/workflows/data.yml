@@ -7,10 +7,6 @@
 
 name: Data
 on:
-  release:
-    types:
-      - created
-
   workflow_dispatch:
     inputs:
       push:
@@ -97,7 +93,7 @@ jobs:
           retention-days: 5
 
       - name: Check and Push
-        if: success() && (inputs.push == true || github.event.action == 'created')
+        if: success() && inputs.push == true
         run: |
           echo "Git push ..."
           # git checkout main
