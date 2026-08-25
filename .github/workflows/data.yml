@@ -11,7 +11,7 @@ on:
     inputs:
       push:
         description: "push"
-        default: false
+        default: true
         type: boolean
 
 jobs:
