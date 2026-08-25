@@ -73,14 +73,35 @@ jobs:
           rm -rf "/tmp/mnt/p3"
           mkdir -p "/tmp/mnt/p3"
           sudo mount "${LOOPX}p3" "/tmp/mnt/p3"
-          unpackInitrd /tmp/mnt/p3/initrd-rr "rr/initrd"
 
-          # 仅生成 pats（models/addons/modules 不再生成）
-          python3 scripts/func.py getpats -w "rr/initrd" -j "docs/pats.json" -x "docs/pats.xlsx"
+          # 只流式提取 initrd 内的 opt/rr/platforms.yml，避免完整解包整个 initrd 导致超时
+          INITRD_FMT=$(sudo file -b --mime-type /tmp/mnt/p3/initrd-rr)
+          echo "[INFO] initrd format: ${INITRD_FMT}"
+          mkdir -p rr/initrd/opt/rr
+          case "${INITRD_FMT}" in
+            *'x-cpio'*)  (cat /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *'x-xz'*)    (xz -dc /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *'x-lz4'*)   (lz4 -dc /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *'x-lzma'*)  (lzma -dc /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *'x-bzip2'*) (bzip2 -dc /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *'gzip'*)    (gzip -dc /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *'zstd'*)    (zstd -dc /tmp/mnt/p3/initrd-rr | cpio -i --to-stdout opt/rr/platforms.yml > rr/initrd/opt/rr/platforms.yml) ;;
+            *) echo "[E] unsupported initrd format: ${INITRD_FMT}"; exit 1 ;;
+          esac
+          if [ ! -s "rr/initrd/opt/rr/platforms.yml" ]; then
+            echo "[E] platforms.yml 提取失败（可能路径/格式不符）"
+            exit 1
+          fi
+          echo "[INFO] platforms.yml extracted: $(wc -c < rr/initrd/opt/rr/platforms.yml) bytes"
 
           sudo umount "/tmp/mnt/p3"
           sudo losetup -d "${LOOPX}"
           rm -rf "/tmp/mnt/p3"
+
+          # 仅生成 pats（models/addons/modules 不再生成）
+          python3 scripts/func.py getpats -w "rr/initrd" -j "docs/pats.json" -x "docs/pats.xlsx"
+
+          rm -rf "rr/initrd"
 
       - name: Upload to Artifacts
         if: success()
